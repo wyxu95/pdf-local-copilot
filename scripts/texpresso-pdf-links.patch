@@ -1,0 +1,106 @@
+diff --git a/src/frontend/engine_pdf.c b/src/frontend/engine_pdf.c
+index 421e6e7..0b1e9e2 100644
+--- a/src/frontend/engine_pdf.c
++++ b/src/frontend/engine_pdf.c
+@@ -23,7 +23,10 @@
+  */
+ 
+ #include <stdlib.h>
++#include <math.h>
++#include <string.h>
+ #include <mupdf/fitz.h>
++#include <mupdf/pdf.h>
+ #include "engine.h"
+ 
+ struct pdf_engine
+@@ -31,6 +34,7 @@ struct pdf_engine
+   struct txp_engine_class *_class;
+   char *path;
+   int page_count;
++  int rendered_page;
+   fz_document *doc;
+   bool changed;
+ };
+@@ -53,6 +57,7 @@ static fz_display_list *engine_render_page(txp_engine *_self,
+                                            int index)
+ {
+   SELF;
++  self->rendered_page = index;
+   fz_page *page = fz_load_page(ctx, self->doc, index);
+   fz_display_list *dl = fz_new_display_list_from_page(ctx, page);
+   fz_drop_page(ctx, page);
+@@ -80,6 +85,7 @@ static void engine_detect_changes(txp_engine *_self, fz_context *ctx)
+   fz_drop_document(ctx, self->doc);
+   self->doc = doc;
+   self->page_count = fz_count_pages(ctx, doc);
++  self->rendered_page = -1;
+   self->changed = 1;
+ }
+ 
+@@ -160,13 +166,65 @@ txp_engine *txp_create_pdf_engine(fz_context *ctx, const char *pdf_path)
+   self->doc = doc;
+   self->page_count = fz_count_pages(ctx, doc);
+ 
++  self->rendered_page = -1;
+   return (txp_engine*)self;
+ }
+ 
+ static fz_buffer *engine_page_annotations(txp_engine *_self, fz_context *ctx)
+ {
+   SELF;
+-  return NULL;
++  if (self->rendered_page < 0) return NULL;
++  fz_buffer *buffer = NULL;
++  fz_page *page = NULL;
++  fz_link *links = NULL;
++  pdf_obj *names = NULL;
++  fz_var(buffer); fz_var(page); fz_var(links); fz_var(names);
++  fz_try(ctx) {
++    buffer = fz_new_buffer(ctx, 512);
++    page = fz_load_page(ctx, self->doc, self->rendered_page);
++    links = fz_load_links(ctx, page);
++    fz_append_string(ctx, buffer, "{\"links\":[");
++    int count = 0;
++    for (fz_link *link = links; link && count < 4096 && buffer->len < 384 * 1024; link = link->next) {
++      if (!link->uri || strlen(link->uri) > 4096 || !isfinite(link->rect.x0) || !isfinite(link->rect.y0) || !isfinite(link->rect.x1) || !isfinite(link->rect.y1)) continue;
++      fz_append_printf(ctx, buffer, "%s{\"bounds\":[%.9g,%.9g,%.9g,%.9g],\"uri\":%q", count++ ? "," : "", link->rect.x0, link->rect.y0, link->rect.x1, link->rect.y1, link->uri);
++      if (link->uri[0] == '#') {
++        float x = 0, y = 0;
++        fz_location location = fz_resolve_link(ctx, self->doc, link->uri, &x, &y);
++        int target = fz_page_number_from_location(ctx, self->doc, location);
++        if (target >= 0 && isfinite(x) && isfinite(y)) fz_append_printf(ctx, buffer, ",\"target\":{\"page\":%d,\"x\":%.9g,\"y\":%.9g}", target, x, y);
++      }
++      fz_append_string(ctx, buffer, "}");
++    }
++    fz_append_string(ctx, buffer, "],\"destinations\":[");
++    pdf_document *pdf = pdf_specifics(ctx, self->doc);
++    if (pdf) {
++      names = pdf_load_name_tree(ctx, pdf, PDF_NAME(Dests));
++      fz_rect media; fz_matrix matrix;
++      pdf_page_transform(ctx, pdf_page_from_fz_page(ctx, page), &media, &matrix);
++      count = 0;
++      for (int i = 0; i < pdf_dict_len(ctx, names) && count < 4096 && buffer->len < 512 * 1024; i++) {
++        pdf_obj *dest = pdf_dict_get_val(ctx, names, i);
++        if (pdf_is_dict(ctx, dest)) dest = pdf_dict_gets(ctx, dest, "D");
++        if (!pdf_is_array(ctx, dest) || pdf_array_len(ctx, dest) < 2) continue;
++        pdf_obj *first = pdf_array_get(ctx, dest, 0);
++        int target = pdf_is_int(ctx, first) ? pdf_to_int(ctx, first) : pdf_lookup_page_number(ctx, pdf, first);
++        if (target != self->rendered_page) continue;
++        const char *name = pdf_to_name(ctx, pdf_dict_get_key(ctx, names, i));
++        if (!*name || strlen(name) > 4096) continue;
++        const char *type = pdf_to_name(ctx, pdf_array_get(ctx, dest, 1));
++        float x = media.x0, y = media.y1;
++        if (!strcmp(type, "XYZ")) { x = pdf_to_real(ctx, pdf_array_get(ctx, dest, 2)); y = pdf_to_real(ctx, pdf_array_get(ctx, dest, 3)); }
++        else if (!strcmp(type, "FitH") || !strcmp(type, "FitBH")) y = pdf_to_real(ctx, pdf_array_get(ctx, dest, 2));
++        fz_point point = fz_transform_point(fz_make_point(x, y), matrix);
++        if (isfinite(point.x) && isfinite(point.y)) fz_append_printf(ctx, buffer, "%s{\"name\":%q,\"x\":%.9g,\"y\":%.9g}", count++ ? "," : "", name, point.x, point.y);
++      }
++    }
++    fz_append_string(ctx, buffer, "]}");
++  }
++  fz_always(ctx) { pdf_drop_obj(ctx, names); fz_drop_link(ctx, links); fz_drop_page(ctx, page); }
++  fz_catch(ctx) { fz_drop_buffer(ctx, buffer); return NULL; }
++  return buffer;
+ }
+ 
+ static int engine_destination_page(txp_engine *_self, fz_context *ctx, const char *name)

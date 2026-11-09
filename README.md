@@ -20,6 +20,7 @@ The workflow is inspired by [Papilot](https://github.com/PapilotAI/papilot): rev
 - **Chat without an annotation.** A request in the paper conversation enters the same review flow. Changes made this way are marked **From Conversation** (From conversation).
 - **Keep one agent conversation.** Follow-up tasks queue in the current Codex or Claude session. Choose a model and reasoning effort for each turn.
 - **Edit and preview the same files.** The agent works in the real project directory. TeXpresso updates the current paper, including unsaved LaTeX edits.
+- **Preview references as you read.** Hover a citation or Figure/Table link to see the rendered entry, figure, or table in a local popup.
 - **Review changes individually.** Text files open in VS Code's native Diff editor. TeX edits also highlight the corresponding rendered text. Checkboxes select changes; the checkmark accepts the selection.
 - **Keep local approval history.** Each approval operation creates one read-only checkpoint. A Git commit clears this local history and starts a new scope.
 
@@ -51,9 +52,23 @@ One batch approval creates one checkpoint containing the accepted changes. Savin
 
 *Screenshots show the included demo paper in an isolated development workspace. Agent replies are produced by the deterministic test CLI. The interface defaults to English; authored annotations and agent output retain their original language.*
 
+### Preview citations and floats
+
+![A citation hover popup showing the rendered bibliography entry](docs/images/reference-preview.png)
+
+Hover a linked citation number, Figure number, or Table number to open a preview
+of its target from the current rendered document. Move into the popup to inspect
+it; long previews scroll inside the popup. Moving away or pressing **Escape**
+closes it. Click the reference or **Go to Target** to navigate to its page.
+**Ctrl/Cmd+click** continues to open the corresponding LaTeX source.
+
+Previews use the document's internal hyperlinks, typically produced by
+`hyperref`. Bibliography entries and float regions are cropped from the local
+rendered page. Editing or rebuilding the paper refreshes the preview cache.
+
 ## Build and install
 
-The current package target is **macOS Apple Silicon**. Native binaries are built on the machine where they will run and link against that machine's libraries. The Git repository contains the extension source and the TeXpresso patch; `vendor/`, `native/`, and generated VSIX files are local build outputs.
+The current package target is **macOS Apple Silicon**. Native binaries are built on the machine where they will run and link against that machine's libraries. The Git repository contains the extension source and the TeXpresso patches; `vendor/`, `native/`, and generated VSIX files are local build outputs.
 
 ### Prerequisites
 
@@ -77,7 +92,7 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.6.0.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.0.vsix
 ```
 
 Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
@@ -138,12 +153,13 @@ Optional commands before `latexmk` can be configured as `pdfLocal.buildSteps`:
 
 ## TeXpresso integration
 
-TeXpresso is maintained as a **pinned upstream revision plus a tracked patch**. A clean clone can recreate the modified engine with `npm run native:build`.
+TeXpresso is maintained as a **pinned upstream revision plus tracked patches**. A clean clone can recreate the modified engine with `npm run native:build`.
 
 | Location | Role |
 | --- | --- |
-| [scripts/build-native.mjs](scripts/build-native.mjs) | Fetches revision `df8b0941ef19b36377014d18a9a264f3591280b1` from the DominikPeters headless fork, checks/applies the patch, and builds the engine |
-| [scripts/texpresso-text-layer.patch](scripts/texpresso-text-layer.patch) | Our complete native change: 39 added lines across three frontend C files, exporting bounded character geometry |
+| [scripts/build-native.mjs](scripts/build-native.mjs) | Fetches revision `df8b0941ef19b36377014d18a9a264f3591280b1` from the DominikPeters headless fork, checks/applies the patches, and builds the engine |
+| [scripts/texpresso-text-layer.patch](scripts/texpresso-text-layer.patch) | Exports bounded character geometry through three frontend C files |
+| [scripts/texpresso-pdf-links.patch](scripts/texpresso-pdf-links.patch) | Exports internal links and named destinations from the PDF backend for reference previews |
 | `vendor/texpresso/` | Generated, ignored upstream source checkout |
 | `native/` | Generated binaries, copied TeXpresso license, and build provenance |
 | [src/live.ts](src/live.ts) | Starts and communicates with the headless renderer |
@@ -176,7 +192,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.6.0.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.0.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.

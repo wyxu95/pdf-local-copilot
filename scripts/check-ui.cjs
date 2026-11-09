@@ -358,9 +358,10 @@ let browser, page;
   await until(async () => (await frame.locator('#paper .text-layer').textContent()).replace(/\s+/g, ' ').includes('The author can compare versions'));
   assert.equal((await historyPoints()).length, 1, 'Rejecting an edit created an approval checkpoint');
   await showPaper();
-  for (const text of ['RevisedReferenceTitle', '2035', 'newCodeValue', 'UpdatedPlanDescription']) {
+  for (const [index, text] of ['RevisedReferenceTitle', '2035', 'newCodeValue', 'UpdatedPlanDescription'].entries()) {
     await (await reviewItem(text)).getByRole('checkbox').click();
     await until(async () => await page.getByRole('treeitem').filter({ hasText: text }).first().getByRole('checkbox').getAttribute('aria-checked') === 'true');
+    await until(async () => (await conversation()).selectedEdits?.length === index + 1);
   }
   await page.getByRole('button', { name: 'PDF Local Copilot: Accept Selected Changes', exact: true }).click();
   for (const text of ['RevisedReferenceTitle', '2035', 'newCodeValue', 'UpdatedPlanDescription']) await until(async () => await page.getByRole('treeitem').filter({ hasText: text }).count() === 0);
@@ -470,6 +471,36 @@ let browser, page;
   const userSettings = JSON.parse(await fs.readFile('output/host/profile/User/settings.json', 'utf8'));
   assert.equal(userSettings['pdfLocal.agents'][0].name, 'uclaude'); assert.equal(userSettings['pdfLocal.agents'][0].type, 'claude'); assert.equal(userSettings['pdfLocal.agents'][0].claude_config_dir, '~/.claude-uni');
   await page.screenshot({ path: 'output/playwright/vscode-custom-claude-agent.png' });
+  await page.getByRole('tab', { name: /^Paper · main\.tex/ }).click();
+  await command('Go to Page'); await input().fill('1'); await page.keyboard.press('Enter');
+  async function referenceSpan(kind) {
+    const index = await frame.evaluate(kind => {
+      const spans = [...document.querySelectorAll('#paper .text-layer span')], text = spans.map(span => span.textContent).join('');
+      if (kind === 'Reference') { const at = text.indexOf('[1]'); return at < 0 ? -1 : at + 1; }
+      const at = text.indexOf(kind), next = text.slice(at + kind.length).search(/\d/); return at < 0 || next < 0 ? -1 : at + kind.length + next;
+    }, kind);
+    assert.ok(index >= 0, `No ${kind} link in the demo`); return frame.locator('#paper .text-layer span').nth(index);
+  }
+  const referenceCard = frame.locator('#reference-preview');
+  for (const kind of ['Reference', 'Figure', 'Table']) {
+    await frame.waitForFunction(() => !document.querySelector('#paper').classList.contains('stale'));
+    const span = await referenceSpan(kind); await span.hover();
+    const readingPosition = await frame.locator('#viewport').evaluate(view => view.scrollTop);
+    await referenceCard.waitFor({ state: 'visible' });
+    await until(async () => (await referenceCard.locator('strong').textContent()).startsWith(kind) && await referenceCard.locator('img').count() === 1);
+    assert.ok(Math.abs(await frame.locator('#viewport').evaluate(view => view.scrollTop) - readingPosition) < 1, 'Hover preview scrolled the reading position');
+    await referenceCard.hover(); await new Promise(resolve => setTimeout(resolve, 220)); assert.ok(await referenceCard.isVisible());
+    await page.screenshot({ path: `output/playwright/reference-${kind.toLowerCase()}.png` });
+    if (kind === 'Table') { await page.keyboard.press('Escape'); await referenceCard.waitFor({ state: 'hidden' }); await span.hover(); await referenceCard.waitFor({ state: 'visible' }); }
+    await frame.locator('#paper').hover({ position: { x: 4, y: 4 } }); await referenceCard.waitFor({ state: 'hidden' });
+  }
+  await (await referenceSpan('Reference')).click();
+  await frame.locator('.paper[data-page="2"] .page-image').waitFor();
+  await until(async () => await frame.evaluate(() => {
+    const spans = [...document.querySelectorAll('.paper[data-page="2"] .text-layer span')], text = spans.map(span => span.textContent).join(''), index = text.indexOf('Demo Author');
+    if (index < 0) return false; const box = spans[index].getBoundingClientRect(), viewport = document.querySelector('#viewport').getBoundingClientRect(); return box.top >= viewport.top && box.bottom <= viewport.bottom;
+  }));
+  console.log('PASS: citation, figure and table hover cards show local rendered previews, retain reading position, stay open under the pointer, dismiss on leave, and link clicks navigate.');
   console.log('PASS: immutable local checkpoint diffs preserve the live manuscript; Git commit automatically clears history files and old diff tabs.');
   console.log('PASS: legacy proposal archived without overwriting manuscript; agent edits real workspace; sparse changed-file backups; TeX diff plus current-PDF highlight; Bib/JS/Markdown diffs; per-hunk rejection; review/whole-round undo; live output; resizable chat; session/model queue continuity.');
   await fs.writeFile('output/host/done', 'passed'); await browser.close();

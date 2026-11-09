@@ -1,10 +1,14 @@
 import type { Readable } from 'node:stream';
 
+export interface PdfDestination { name: string; x: number; y: number }
+export interface PdfLink { bounds: [number, number, number, number]; uri: string; target?: { page: number; x: number; y: number } }
+
 export interface FrameHeader {
   requestId: number; revision: number; sequence: number; page: number;
   bounds: [number, number, number, number]; width: number; height: number;
   mime: 'image/png' | 'image/svg+xml'; byteLength: number;
   characters?: [number, number, number, number, number][];
+  annotations?: { links: PdfLink[]; destinations?: PdfDestination[] };
 }
 export interface Frame { header: FrameHeader; bytes: Buffer }
 

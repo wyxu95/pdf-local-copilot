@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { readFrames, type Frame, type FrameHeader } from './protocol';
+import { readFrames, type Frame, type FrameHeader, type PdfLink } from './protocol';
 import { launch, localEnvironment, terminate } from './process';
 import { inside } from './project';
 import { externalPosition, externalLocation } from './synctex';
@@ -50,6 +50,7 @@ export class LivePreview {
   private auxiliaryTail: Promise<unknown> = Promise.resolve();
   private exports = new Map<number, { resolve: (frame: Frame) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private searches = new Map<number, { resolve: (point: PagePoint) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  private destinations = new Map<string, { resolve: (page: number) => void; reject: (error: Error) => void; timer: NodeJS.Timeout; sequence: number }>();
   private cache = new Map<number, Frame>();
   private externalPending = false;
   lastFrame?: Frame;
@@ -78,6 +79,16 @@ export class LivePreview {
   private state(stale = true) { this.events.state({ ...this.snapshot(), stale: stale || this.externalPending }); }
   buildPending(value: boolean) { if (this.options.pdf) { this.externalPending = value; if (value) this.state(); } }
   private message(v: unknown[]) {
+    if (v[0] === 'preview-destination') {
+      const name = String(v[3]), pending = this.destinations.get(name);
+      if (pending) {
+        clearTimeout(pending.timer); this.destinations.delete(name);
+        if (v[2] !== pending.sequence || pending.sequence !== this.sequence) pending.reject(new Error('The reference changed during lookup.'));
+        else if (Number(v[4]) < 0) pending.reject(new Error('The reference target was not found.'));
+        else pending.resolve(Number(v[4]));
+      }
+      return;
+    }
     if (v[0] === 'preview-source') {
       const waiting = this.searches.get(Number(v[1]));
       if (waiting) { clearTimeout(waiting.timer); this.searches.delete(Number(v[1])); if (v[3] !== this.sequence) waiting.reject(new Error('Source changed during search.')); else waiting.resolve({ page: Number(v[4]), x: Number(v[5]), y: Number(v[6]) }); }
@@ -137,8 +148,9 @@ export class LivePreview {
     clearTimeout(this.inverse.timer); this.inverse.reject(new Error('The preview changed. Select the passage again.')); this.inverse = undefined;
   }
   private barrier() {
-    this.cancelInverse(); this.inFlight = 0; this.sequence++; this.state(); this.send(['preview-barrier', this.sequence]);
+    this.cancelInverse(); this.cancelDestinations(); this.inFlight = 0; this.sequence++; this.state(); this.send(['preview-barrier', this.sequence]);
   }
+  private cancelDestinations() { for (const pending of this.destinations.values()) { clearTimeout(pending.timer); pending.reject(new Error('The reference preview was cancelled.')); } this.destinations.clear(); }
   update(file: string, text: string) {
     if (!inside(this.root, file)) return;
     if (this.options.pdf) { this.buildPending(true); return; }
@@ -219,6 +231,23 @@ export class LivePreview {
     return this.exportFrame(page).then(frame => { this.cache.set(page, frame); while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value!); return frame; });
   }
   capture(page: number, rect: number[]): Promise<Frame> { return this.exportFrame(page, rect); }
+  async reference(link: PdfLink) {
+    if (!link.uri.startsWith('#')) throw new Error('Only internal document references have previews.');
+    const sequence = this.sequence, name = link.target ? '' : link.uri.slice(1);
+    let page = link.target?.page;
+    if (page === undefined) page = await this.auxiliary(() => new Promise<number>((resolve, reject) => {
+      if (sequence !== this.sequence) { reject(new Error('The reference changed during lookup.')); return; }
+      const timer = setTimeout(() => { this.destinations.delete(name); reject(new Error('Timed out locating the reference.')); }, 15000);
+      this.destinations.set(name, { resolve, reject, timer, sequence }); this.send(['preview-destination', this.revision, sequence, name]);
+    }));
+    if (sequence !== this.sequence) throw new Error('The reference changed during lookup.');
+    const frame = await this.readPage(page);
+    if (sequence !== this.sequence) throw new Error('The reference changed during lookup.');
+    const destinations = frame.header.annotations?.destinations || [];
+    const destination = name ? destinations.find(target => target.name === name) : destinations.filter(target => /^(cite|figure|table)[.]/i.test(target.name) && Math.hypot(target.x - link.target!.x, target.y - link.target!.y) < 6).sort((a, b) => Math.hypot(a.x - link.target!.x, a.y - link.target!.y) - Math.hypot(b.x - link.target!.x, b.y - link.target!.y))[0];
+    if (name && !destination) throw new Error('The reference target has no preview coordinates.');
+    return { frame, target: { page, name: destination?.name || '', x: destination?.x ?? link.target!.x, y: destination?.y ?? link.target!.y } };
+  }
   private exportFrame(page: number, rect?: number[]): Promise<Frame> {
     return this.auxiliary(() => new Promise<Frame>((resolve, reject) => {
       const id = ++this.requestId;
@@ -228,7 +257,7 @@ export class LivePreview {
     }));
   }
   async stop() {
-    this.stopped = true; clearTimeout(this.syncTimer); this.cancelInverse();
+    this.stopped = true; clearTimeout(this.syncTimer); this.cancelInverse(); this.cancelDestinations();
     for (const id of [...this.exports.keys(), ...this.searches.keys()]) this.failAuxiliary(id, new Error('The preview is closed.'));
     if (this.child && this.child.exitCode === null && this.child.signalCode === null) {
       const child = this.child;

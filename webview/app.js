@@ -1,5 +1,6 @@
 /* PDF pages, margin annotations, and hit testing. Workspace actions stay in VS Code. */
 import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, lineCaret, textCaret, quoteGeometry, placeOverlayLabels } from '../src/view-geometry';
+import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds } from '../src/reference-preview';
 (() => {
   const vscode = acquireVsCodeApi(), viewport = document.querySelector('#viewport'), pages = document.querySelector('#pages');
   const state = {
@@ -40,6 +41,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     paper.addEventListener('pointerup', e => pointerUp(e, record));
     paper.addEventListener('pointercancel', () => { textDrag = null; drag = null; });
     paper.addEventListener('mouseup', e => selectText(e, record));
+    paper.addEventListener('pointerleave', () => { clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(dismissReference, 140); });
     resize.observe(paper); return record;
   }
   function ensureRows(required = 0) {
@@ -51,6 +53,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
   }
   const observer = new IntersectionObserver(entries => { for (const entry of entries) if (entry.isIntersecting) enqueue(state.side, Number(entry.target.dataset.page)); }, { root: viewport, rootMargin: '900px 0px' });
   const resize = new ResizeObserver(entries => {
+    dismissReference();
     for (const entry of entries) {
       if (entry.target === viewport) { document.body.style.setProperty('--view-width', `${viewport.clientWidth}px`); continue; }
       const record = state.rows.get(Number(entry.target.dataset.page)); if (record) layoutCards(record);
@@ -87,6 +90,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
   }
   let scrollFrame = 0, visibleTimer;
   function onScroll() {
+    dismissReference();
     if (scrollFrame) return;
     scrollFrame = requestAnimationFrame(() => {
       scrollFrame = 0;
@@ -160,6 +164,68 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     record.crop = crop; const transform = surfaceTransform(record.bounds, crop);
     record.paper.style.aspectRatio = String(transform.aspectRatio); record.paper.dataset.cropLeft = crop[0]; record.paper.dataset.cropRight = crop[2];
     record.surface.style.left = `${transform.left}%`; record.surface.style.width = `${transform.width}%`;
+  }
+  const referenceCard = make('section', 'reference-preview'); referenceCard.id = 'reference-preview'; referenceCard.hidden = true; referenceCard.setAttribute('role', 'tooltip');
+  const referenceHeading = make('strong', '', 'Reference Preview'), referenceContent = make('div', 'reference-content');
+  const referenceJump = action('Go to Target', () => { const current = hoveredReference; dismissReference(); if (current) send({ ...current.payload, type: 'referenceJump' }); });
+  const referenceClose = action('×', dismissReference); referenceClose.setAttribute('aria-label', 'Close reference preview');
+  const referenceHeader = make('header', 'reference-header'); referenceHeader.append(referenceHeading, referenceJump, referenceClose); referenceCard.append(referenceHeader, referenceContent); viewport.append(referenceCard);
+  let hoveredReference = null, referenceTimer, referenceHideTimer, referenceRequest = 0;
+  const referenceCache = new Map();
+  referenceCard.addEventListener('pointerenter', () => clearTimeout(referenceHideTimer));
+  referenceCard.addEventListener('pointerleave', () => { clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(dismissReference, 140); });
+  function dismissReference() {
+    clearTimeout(referenceTimer); clearTimeout(referenceHideTimer); hoveredReference = null; referenceRequest++; referenceCard.hidden = true;
+    for (const record of state.rows.values()) record.paper.classList.remove('reference-link-hover');
+  }
+  function referencePayload(record, hit) { return { requestId: ++referenceRequest, session: record.frame.session, sequence: record.frame.header.sequence, revision: record.frame.header.revision, page: record.page, linkIndex: hit.index }; }
+  function positionReference() {
+    if (!hoveredReference || referenceCard.hidden) return;
+    const record = hoveredReference.record, b = record.bounds, surface = record.surface.getBoundingClientRect(), outer = viewport.getBoundingClientRect(), rect = hoveredReference.hit.link.bounds;
+    const x = surface.left + (rect[0] - b[0]) / (b[2] - b[0]) * surface.width, top = surface.top + (rect[1] - b[1]) / (b[3] - b[1]) * surface.height, bottom = surface.top + (rect[3] - b[1]) / (b[3] - b[1]) * surface.height;
+    referenceCard.style.width = `${Math.max(160, Math.min(760, viewport.clientWidth - 24))}px`;
+    const left = Math.max(8, Math.min(x - outer.left, viewport.clientWidth - referenceCard.offsetWidth - 8));
+    const y = bottom - outer.top + 8 + referenceCard.offsetHeight <= viewport.clientHeight - 8 ? bottom - outer.top + 8 : Math.max(8, top - outer.top - referenceCard.offsetHeight - 8);
+    referenceCard.style.left = `${viewport.scrollLeft + left}px`; referenceCard.style.top = `${viewport.scrollTop + y}px`;
+  }
+  function hoverReference(event, record) {
+    if (event.buttons || event.ctrlKey || event.metaKey || event.pointerType === 'touch' || !record.imageReady || !fresh(state.side, record.frame) || state.tool !== 'text' || state.openNote || state.openReview || state.draft?.phase === 'editing' && !state.draft.hidden) { dismissReference(); return; }
+    const hit = referenceLinkAt(record.frame.header, ...point(event, record));
+    if (!hit) { if (!referenceCard.matches(':hover')) { clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(dismissReference, 140); } return; }
+    clearTimeout(referenceHideTimer); record.paper.classList.add('reference-link-hover');
+    const key = `${version(record.frame)}:${record.page}:${hit.index}`;
+    if (hoveredReference?.key === key) return;
+    dismissReference();
+    hoveredReference = { record, hit, key, payload: referencePayload(record, hit), label: referenceLabel(record.frame.header, hit.link.bounds) };
+    record.paper.classList.add('reference-link-hover');
+    referenceTimer = setTimeout(() => {
+      if (!hoveredReference || hoveredReference.key !== key) return;
+      referenceCard.hidden = false; referenceHeading.textContent = 'Reference Preview'; referenceContent.replaceChildren(make('p', '', 'Loading preview…')); positionReference();
+      const cached = referenceCache.get(key);
+      if (cached) showReference(cached); else send({ ...hoveredReference.payload, type: 'referencePreview' });
+    }, 280);
+  }
+  function showReference(preview) {
+    if (!hoveredReference) return;
+    const label = hoveredReference.label.match(/\[[^\]]+\]|\d+[a-z]?(?:[–−-]\d+[a-z]?)?/i)?.[0] || hoveredReference.label.replace(/[,.;:\s]+$/, '');
+    referenceHeading.textContent = `${preview.kind}${label ? ' ' + label : ''} · Page ${preview.target.page + 1}`;
+    const image = new Image(); image.src = preview.image; image.alt = `${preview.kind} preview on page ${preview.target.page + 1}`;
+    referenceContent.replaceChildren(image); referenceCard.hidden = false; positionReference();
+    void image.decode().then(positionReference).catch(() => {});
+  }
+  async function renderReference(message) {
+    const current = hoveredReference; if (!current || current.payload.requestId !== message.requestId) return;
+    if (message.error) { referenceContent.replaceChildren(make('p', '', message.error)); positionReference(); return; }
+    const image = new Image(); image.src = `data:${message.header.mime};base64,${message.data}`; await image.decode();
+    if (hoveredReference !== current) return;
+    const canvas = document.createElement('canvas'); canvas.width = Math.min(900, image.naturalWidth); canvas.height = Math.round(canvas.width * image.naturalHeight / image.naturalWidth);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const kind = referenceKind(message.target.name), bounds = referencePreviewBounds(message.header, message.target, kind, { width: canvas.width, height: canvas.height, data: ctx.getImageData(0, 0, canvas.width, canvas.height).data });
+    const page = message.header.bounds, sx = image.naturalWidth / (page[2] - page[0]), sy = image.naturalHeight / (page[3] - page[1]);
+    const crop = document.createElement('canvas'); crop.width = Math.max(1, Math.ceil((bounds[2] - bounds[0]) * sx)); crop.height = Math.max(1, Math.ceil((bounds[3] - bounds[1]) * sy));
+    const out = crop.getContext('2d'); out.fillStyle = 'white'; out.fillRect(0, 0, crop.width, crop.height); out.drawImage(image, (bounds[0] - page[0]) * sx, (bounds[1] - page[1]) * sy, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    const preview = { kind, target: message.target, image: crop.toDataURL('image/png') }; referenceCache.set(current.key, preview);
+    if (referenceCache.size > 8) referenceCache.delete(referenceCache.keys().next().value); showReference(preview);
   }
   function drawMarks(record) {
     updateRailVisibility();
@@ -338,6 +404,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     if (message.id) state.openNote = message.id; renderAnnotation(); updateChatControls();
   }
   document.addEventListener('pointerdown', event => {
+    if (!event.target.closest('.reference-preview')) dismissReference();
     if (event.target.closest('.text-layer,#chat') && !event.target.closest('.annotation-popover,.selection-action,.note-marker,.review-marker')) closeAnnotation();
   }, true);
   function navigate(page, center = false) {
@@ -372,16 +439,19 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     const rects = [...record.paper.querySelectorAll('.text-layer span')].filter(span => range.intersectsNode(span)).map(span => JSON.parse(span.dataset.rect)).filter(rect => rect[2] > rect[0] && rect[3] > rect[1]);
     if (rects.length) beginDraft(record.frame, merge(rects).slice(0, 500), quote);
   }
-  let drag, textDrag, sourcePointer = false, skipSelection = false;
+  let drag, textDrag, linkPress, sourcePointer = false, skipSelection = false;
   function point(event, record) {
     return sourcePoint(record.bounds, record.surface.getBoundingClientRect(), event.clientX, event.clientY);
   }
   function pointerDown(event, record) {
+    linkPress = null;
     if (event.button !== 0 || event.target.closest('button') || !record.imageReady || !fresh(state.side, record.frame)) return;
     if (event.ctrlKey || event.metaKey) {
       sourcePointer = true; event.preventDefault(); event.stopPropagation(); window.getSelection()?.removeAllRanges();
       const [x, y] = point(event, record); send({ type: 'sourceJump', header: record.frame.header, session: record.frame.session, x, y }); return;
     }
+    const link = state.tool === 'text' && referenceLinkAt(record.frame.header, ...point(event, record));
+    if (link) linkPress = { record, start: point(event, record), payload: referencePayload(record, link) };
     if (state.tool !== 'region') {
       const start = point(event, record), index = Number(event.target.closest('[data-char-index]')?.dataset.charIndex);
       const line = record.lines?.find(line => line.glyphs.some(g => g.index === index)) || record.lines?.find(line => start[1] >= line.bounds[1] && start[1] <= line.bounds[3]);
@@ -392,6 +462,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     drag = { record, start: point(event, record), current: point(event, record), frame: record.frame }; record.paper.setPointerCapture(event.pointerId); event.preventDefault();
   }
   function pointerMove(event, record) {
+    hoverReference(event, record);
     if (textDrag?.record === record && event.buttons & 1) {
       const end = point(event, record); if (Math.hypot(end[0] - textDrag.start[0], end[1] - textDrag.start[1]) > 2) textDrag.moved = true;
       event.preventDefault(); setTextRange(textDrag, textCaret(record.lines, end[0], end[1], textDrag.anchor.line));
@@ -400,6 +471,14 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     const box = make('div', 'selection-box'); rectStyle(box, [Math.min(drag.start[0], drag.current[0]), Math.min(drag.start[1], drag.current[1]), Math.max(drag.start[0], drag.current[0]), Math.max(drag.start[1], drag.current[1])], record.bounds); record.surface.append(box);
   }
   function pointerUp(event, record) {
+    if (linkPress?.record === record) {
+      const pressed = linkPress, end = point(event, record); linkPress = null;
+      if (Math.hypot(end[0] - pressed.start[0], end[1] - pressed.start[1]) < 3) {
+        textDrag = null; if (record.paper.hasPointerCapture(event.pointerId)) record.paper.releasePointerCapture(event.pointerId);
+        window.getSelection()?.removeAllRanges(); skipSelection = true; setTimeout(() => { skipSelection = false; }, 0);
+        send({ ...pressed.payload, type: 'referenceJump' }); return;
+      }
+    }
     if (sourcePointer) { setTimeout(() => { sourcePointer = false; }, 0); return; }
     if (textDrag?.record === record) {
       const data = textDrag, end = point(event, record); textDrag = null;
@@ -423,6 +502,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
   }
   document.addEventListener('contextmenu', event => { if (event.ctrlKey && event.target.closest('.paper')) { event.preventDefault(); event.stopImmediatePropagation(); } }, true);
   window.addEventListener('keydown', event => {
+    if (event.key === 'Escape') dismissReference();
     if (event.ctrlKey || event.metaKey) document.body.classList.add('source-modifier');
     if (['PageDown', 'PageUp'].includes(event.key) && !event.target.closest('textarea,input')) { event.preventDefault(); viewport.scrollBy(0, viewport.clientHeight * .9 * (event.key === 'PageDown' ? 1 : -1)); }
   });
@@ -580,11 +660,13 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       Object.assign(state, { side: message.side, tool: message.tool, zoom: message.zoom, notes: message.notes, difference: message.difference, markers: message.markers || state.markers });
       document.body.classList.toggle('secondary', message.chatVisible === false); document.body.classList.toggle('chat-only', !!message.chatOnly); document.body.dataset.side = state.side; document.body.style.setProperty('--zoom', state.zoom); ensureRows(); for (const record of state.rows.values()) record.paper.dataset.side = state.side;
     } else if (message.type === 'previewReset') {
+      dismissReference(); referenceCache.clear();
       state.meta[message.side] = null; state.frames[message.side].clear(); state.queue = state.queue.filter(r => r.side !== message.side); for (const id of [...state.queued]) if (id.startsWith(message.side + ':')) state.queued.delete(id);
       if (state.pending?.side === message.side) state.pending = null;
       if (message.side === state.side) for (const record of state.rows.values()) { record.renderKey = ''; record.paper.classList.add('stale'); }
     } else if (message.type === 'previewState') {
       const previous = state.meta[message.side]; state.meta[message.side] = { ...message, pages: !message.complete && previous?.session === message.session && previous?.sequence === message.sequence ? Math.max(previous.pages, message.pages) : message.pages };
+      if (message.side === state.side && previous && (previous.sequence !== message.sequence || previous.revision !== message.revision)) { dismissReference(); referenceCache.clear(); }
       if (!previous || previous.session !== message.session || previous.sequence !== message.sequence || previous.revision !== message.revision) for (const id of [...state.failed]) if (id.startsWith(message.side + ':')) state.failed.delete(id);
       if (message.side === state.side) { ensureRows(); for (const record of state.rows.values()) record.paper.classList.toggle('stale', !fresh(state.side, record.frame)); requestVisible(); }
       pump();
@@ -598,6 +680,12 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       if (state.pending?.key === key(message.side, message.page, message.session)) state.pending = null;
       const record = state.rows.get(message.page); if (message.side === state.side && record && !record.frame) { const failure = make('div', 'page-failure'); failure.append(make('p', '', message.message), action('Reload Page', () => enqueue(state.side, message.page, true))); record.paper.replaceChildren(failure); }
       pump();
+    } else if (message.type === 'referencePreview') {
+      void renderReference(message).catch(error => { if (hoveredReference?.payload.requestId === message.requestId) { referenceContent.replaceChildren(make('p', '', String(error))); positionReference(); } });
+    } else if (message.type === 'referencePosition') {
+      if (message.side === state.side && message.session === state.meta[state.side]?.session) {
+        const target = message.target; dismissReference(); state.pendingReveal = { page: target.page, rect: [target.x, target.y, target.x + 1, target.y + 12] }; ensureRows(target.page + 1); enqueue(state.side, target.page); reveal();
+      }
     } else if (message.type === 'notes') {
       const previous = state.notes.find(n => n.id === state.openNote), opened = message.notes.find(n => n.id === state.openNote);
       state.notes = message.notes; updateRailVisibility(); for (const record of state.rows.values()) { renderCards(record); if (record.frame) drawMarks(record); }
@@ -610,7 +698,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     else if (message.type === 'editNote') { const note = state.notes.find(n => n.id === message.id); if (note) beginEdit(note); }
     else if (message.type === 'beginDraft') { const frame = { header: message.header, session: message.session }; beginDraft(frame, message.rects, message.quote, message.kind, { editing: true }); }
     else if (message.type === 'tool') { state.tool = message.tool; for (const record of state.rows.values()) record.paper.classList.toggle('region-mode', state.tool === 'region'); }
-    else if (message.type === 'zoom') { state.zoom = message.zoom; document.body.style.setProperty('--zoom', state.zoom); }
+    else if (message.type === 'zoom') { dismissReference(); state.zoom = message.zoom; document.body.style.setProperty('--zoom', state.zoom); }
     else if (message.type === 'difference') { state.difference = message.enabled; for (const record of state.rows.values()) if (record.frame) difference(record); }
     else if (message.type === 'markers') { state.markers = message.markers; if (state.openReview && !state.markers[state.side].some(marker => marker.id === state.openReview.id)) state.openReview = null; for (const record of state.rows.values()) if (record.frame) drawMarks(record); renderAnnotation(); }
     else if (message.type === 'reviewDetails') { closeAnnotation(); state.openReview = message; renderAnnotation(); }

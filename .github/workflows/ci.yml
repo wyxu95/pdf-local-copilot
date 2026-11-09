@@ -29,3 +29,4 @@ jobs:
           test/source-location.test.ts test/review-geometry.test.ts
           test/local-history.test.ts test/review.test.ts test/project-ignore.test.ts
           test/default-language.test.ts
+          test/reference-geometry.test.ts

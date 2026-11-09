@@ -52,6 +52,7 @@ export class Paper {
   private sourceGroup?: vscode.TabGroup;
   private pendingChatFocus?: { draft?: string };
   private openingChat?: Promise<void>;
+  private referenceGeneration = 0;
   localHistory?: LocalHistory;
   private conversation: ConversationStore;
   private catalogs: Record<string, ModelCatalog> = {};
@@ -96,6 +97,13 @@ export class Paper {
       if (m.type === 'requestPage') { void this.sendPage(panel, m.side === 'before' || m.side === 'after' ? m.side : side, m.page, m.session); return; }
       if (m.type === 'visiblePage' && Number.isInteger(m.page) && m.page >= 0 && m.page <= 10000) { if (panel.active || panel === this.panel && panel.visible) { this.currentSide = side; this.page = m.page; this.ui.activate(this); } return; }
       if (m.type === 'sourceJump') { void this.jumpToSource(m, side).catch(this.ui.report); return; }
+      if (m.type === 'referencePreview' || m.type === 'referenceJump') {
+        const generation = ++this.referenceGeneration;
+        void this.referenceAction(m, panel, side, generation).catch(error => {
+          if (m.type === 'referenceJump') this.ui.report(error);
+          else if (generation === this.referenceGeneration) this.post(panel, { type: 'referencePreview', requestId: m.requestId, error: error instanceof Error ? error.message : String(error) });
+        }); return;
+      }
       if (m.type === 'chatSend') { void this.sendChat(m.instruction, m.agent, m.ids, m.options).catch(e => this.both({ type: 'chatError', message: e instanceof Error ? e.message : String(e) })); return; }
       if (m.type === 'chatDraft' && typeof m.text === 'string') {
         try {
@@ -161,6 +169,21 @@ export class Paper {
     const preview = side === 'before' ? this.before : this.after; if (!preview) return;
     try { const frame = await preview.readPage(page); if (session === this.previewSessions[side]) this.post(panel, { type: 'pageFrame', side, session, header: frame.header, data: frame.bytes.toString('base64') }); }
     catch (e) { if (session === this.previewSessions[side]) this.post(panel, { type: 'pageError', side, session, page, message: e instanceof Error ? e.message : String(e) }); }
+  }
+  private async referenceAction(message: { type: string; requestId: number; session: number; sequence: number; revision: number; page: number; linkIndex: number }, panel: vscode.WebviewPanel, side: 'before' | 'after', generation: number) {
+    const preview = side === 'before' ? this.before : this.after;
+    if (!preview || message.session !== this.previewSessions[side] || !Number.isInteger(message.page) || message.page < 0 || message.page > 10000 || !Number.isInteger(message.linkIndex)) return;
+    const source = await preview.readPage(message.page);
+    if (generation !== this.referenceGeneration) return;
+    if (source.header.sequence !== message.sequence || source.header.revision !== message.revision) throw new Error('The reference has moved. Hover over it again.');
+    const link = source.header.annotations?.links[message.linkIndex];
+    if (!link?.uri.startsWith('#')) return;
+    const result = await preview.reference(link);
+    if (generation !== this.referenceGeneration) return;
+    if (message.type === 'referenceJump') {
+      this.page = result.target.page; preview.showPage(result.target.page); this.ui.refresh();
+      this.post(panel, { type: 'referencePosition', side, session: message.session, target: result.target });
+    } else this.post(panel, { type: 'referencePreview', requestId: message.requestId, target: result.target, header: result.frame.header, data: result.frame.bytes.toString('base64') });
   }
   private async jumpToSource(m: { header: FrameHeader; x: number; y: number; session: number }, side: 'before' | 'after') {
     const preview = side === 'before' ? this.before : this.after;

@@ -12,10 +12,10 @@
 
 ## 安装与打开
 
-先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.6.0.vsix`。
+先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.7.0.vsix`。
 
 ```sh
-code --install-extension artifacts/pdf-local-copilot-0.6.0.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.0.vsix
 ```
 
 打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
@@ -26,6 +26,7 @@ code --install-extension artifacts/pdf-local-copilot-0.6.0.vsix
 
 ## PDF 批注与任务队列
 
+- 鼠标悬停在引用编号、Figure 或 Table 的链接编号上，可预览当前稿件中的参考文献条目、图表及题注。移入弹窗可继续查看和滚动，移出或按 Escape 关闭；点击编号或 **Go to Target** 跳转到目标页。预览依据文档内部链接，通常由 `hyperref` 生成。
 - 页面适配可用宽度并裁掉左右空白，保留图表；多页连续滚动，页间距为 5px，支持放大和缩小。
 - Ctrl＋左键点击 PDF，跳到最近正文对应的源码；macOS 同时支持 Cmd＋左键。TeX 原生右键菜单中的 **Go to PDF Location** 提供正向同步。
 - 选中文字后点击 **Add Annotation**，在选区下方填写意见；区域选择可框选公式或图片。
@@ -36,6 +37,8 @@ code --install-extension artifacts/pdf-local-copilot-0.6.0.vsix
 - 运行期间可继续准备并发送下一轮。各轮在同一个 CLI 会话中顺序执行。
 
 聊天实时展示代理回复、工具调用、命令输出和执行状态，工具详情可展开。**Logs** 打开完整原生日志。关闭聊天页后，可通过 **Paper Chat and Task Queue** 重新打开并继续原会话。
+
+![引用悬停预览显示对应的参考文献条目](docs/images/reference-preview.png)
 
 每轮提示词会提及 **SE-paper-revising**，要求代理先读取配置目录下的 `skills/paper-review/SKILL.md`，再按作者的批注范围修改。Codex 使用 `CODEX_HOME`（默认为 `~/.codex`）；Claude 使用对应的 `claude_config_dir`，例如 uclaude 的 `~/.claude-uni`。作者的明确要求优先，技能不可用时会要求代理说明并继续处理本轮请求。
 
@@ -145,13 +148,13 @@ npm run check
 npm test
 npm run test:ui
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.6.0.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.0.vsix npm run test:ui
 ```
 
 UI 测试使用隔离的 VS Code 配置与真实 TeXpresso / TeX Live，覆盖真实目录写入、差异备份、旧任务迁移、TeX Diff 与 PDF 联动、其他文本 Diff、批注来源／清理／追问、整轮撤回和连续会话。截图在 `output/playwright/`。
 
-当前原生包链接本机 Homebrew 库；其他机器可从源码构建。TeXpresso 固定在 [VS Code 维护分支](https://github.com/DominikPeters/texpresso/tree/vscode) 的 `df8b0941ef19b36377014d18a9a264f3591280b1`，附加字符坐标补丁。交互参考 [Papilot](https://github.com/PapilotAI/papilot)，许可证见 `THIRD_PARTY_NOTICES.md`。
+当前原生包链接本机 Homebrew 库；其他机器可从源码构建。TeXpresso 固定在 [VS Code 维护分支](https://github.com/DominikPeters/texpresso/tree/vscode) 的 `df8b0941ef19b36377014d18a9a264f3591280b1`，附加字符坐标和 PDF 内部链接补丁。交互参考 [Papilot](https://github.com/PapilotAI/papilot)，许可证见 `THIRD_PARTY_NOTICES.md`。
 
 ## 致谢
 
-感谢 [Papilot](https://github.com/PapilotAI/papilot) 团队提出围绕 PDF 批注进行 AI 论文修改的交互方式。感谢 [TeXpresso](https://github.com/let-def/texpresso) 及其贡献者提供增量渲染引擎，以及 [DominikPeters 的 headless 分支](https://github.com/DominikPeters/texpresso/tree/vscode) 提供本插件使用的基础版本。我们保留固定上游版本与字符坐标补丁，具体集成位置见 [TeXpresso 集成说明](docs/texpresso.md)。
+感谢 [Papilot](https://github.com/PapilotAI/papilot) 团队提出围绕 PDF 批注进行 AI 论文修改的交互方式。感谢 [TeXpresso](https://github.com/let-def/texpresso) 及其贡献者提供增量渲染引擎，以及 [DominikPeters 的 headless 分支](https://github.com/DominikPeters/texpresso/tree/vscode) 提供本插件使用的基础版本。我们保留固定上游版本与字符坐标、PDF 链接补丁，具体集成位置见 [TeXpresso 集成说明](docs/texpresso.md)。
