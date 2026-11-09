@@ -50,7 +50,7 @@ for (const engine of ['xelatex', 'pdflatex'] as const) test(`reference links res
       const image = PNG.sync.read(frame.bytes), raster = { width: image.width, height: image.height, data: new Uint8ClampedArray(image.data) };
       const bounds = referencePreviewBounds(frame.header, target, kind, raster), text = referenceLabel(frame.header, bounds);
       if (kind === 'Reference') {
-        const number = target.name === 'cite.first' ? '6' : '11', title = number === '6' ? 'First reference title' : 'Second reference title';
+        const number: string = target.name === 'cite.first' ? '6' : '11', title = number === '6' ? 'First reference title' : 'Second reference title';
         assert.equal(target.page, 2); assert.equal(referenceLabel(first.header, link.bounds), number);
         for (const char of first.header.characters!.filter(char => char[0] >= 48 && char[0] <= 57 && (char[1] + char[3]) / 2 >= link.bounds[0] && (char[1] + char[3]) / 2 <= link.bounds[2] && (char[2] + char[4]) / 2 >= link.bounds[1] && (char[2] + char[4]) / 2 <= link.bounds[3])) for (const fraction of [.1, .5, .9])
           assert.equal(referenceLinkAt(first.header, char[1] + (char[3] - char[1]) * fraction, (char[2] + char[4]) / 2)?.link.uri, link.uri, 'Hovering a digit selected the adjacent citation');
