@@ -50,7 +50,7 @@ jobs:
         run: node -e "if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('This package requires a macOS ARM64 runner.')"
       - name: Install native build dependencies
         env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install mupdf-tools sdl2 pkgconf harfbuzz freetype graphite2 fontconfig libpng icu4c@78 re2c
       - run: npm ci
       - run: npm run native:build
