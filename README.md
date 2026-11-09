@@ -101,15 +101,17 @@ npm run package
 code --install-extension artifacts/pdf-local-copilot-0.7.3.vsix
 ```
 
-### Download a CI build
+### Download a release
 
-Open a successful run under [Actions → CI](https://github.com/wyxu95/pdf-local-copilot/actions/workflows/ci.yml)
-and download **pdf-local-copilot-darwin-arm64** from its **Artifacts** section.
-Extract the ZIP and install the included `.vsix` with **Extensions: Install from VSIX…**.
-CI builds the native engine and packages the extension on a macOS ARM64 runner
-after the TypeScript and component checks pass. Builds run on pushes to `main`,
-pull requests, and manual **Run workflow** requests. Install the Homebrew and TeX
+Open [Releases](https://github.com/wyxu95/pdf-local-copilot/releases/latest), download
+the `.vsix` under **Assets**, and install it with **Extensions: Install from VSIX…**.
+Release packages target macOS Apple Silicon. Install the Homebrew and TeX
 dependencies listed above on the machine running the extension.
+
+Pushing a version tag matching `package.json`, such as `v0.7.3`, runs the
+[Release workflow](.github/workflows/release.yml): it checks TypeScript, builds
+the native engine, and publishes the VSIX directly to GitHub Releases.
+Release notes come from `docs/releases/<tag>.md` when available.
 
 Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
 

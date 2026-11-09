@@ -18,10 +18,10 @@
 code --install-extension artifacts/pdf-local-copilot-0.7.3.vsix
 ```
 
-也可以在 [Actions → CI](https://github.com/wyxu95/pdf-local-copilot/actions/workflows/ci.yml)
-中打开成功的运行，从 **Artifacts** 下载 **pdf-local-copilot-darwin-arm64**，
-解压后通过 **Extensions: Install from VSIX…** 安装其中的 `.vsix`。
-推送 `main`、PR 和手动 **Run workflow** 都会执行检查，并在 macOS ARM64 上构建原生引擎和安装包。
+也可以在 [Releases](https://github.com/wyxu95/pdf-local-copilot/releases/latest)
+的 **Assets** 中直接下载 `.vsix`，通过 **Extensions: Install from VSIX…** 安装。
+推送与 `package.json` 版本一致的标签（例如 `v0.7.3`）会触发 Release 工作流，
+在 macOS ARM64 上检查类型、构建原生引擎并将安装包直接发布到 Releases。
 运行插件的机器仍需安装英文 README 中列出的 Homebrew 库和 TeX 环境。
 
 打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。

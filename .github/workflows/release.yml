@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and publish macOS ARM64 VSIX
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify platform and release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node -e "if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('This package requires a macOS ARM64 runner.'); if (process.env.RELEASE_TAG !== 'v' + require('./package.json').version) throw new Error('The tag must match package.json version.')"
+      - name: Install native build dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install mupdf-tools sdl2 pkgconf harfbuzz freetype graphite2 fontconfig libpng icu4c@78 re2c
+      - run: npm ci
+      - run: npm run check
+      - run: npm run native:build
+      - run: npm run package
+      - name: Publish release and VSIX
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifacts/*.vsix --clobber
+          else
+            notes=(--generate-notes)
+            release_notes="docs/releases/$RELEASE_TAG.md"
+            if [ -f "$release_notes" ]; then
+              notes=(--notes-file "$release_notes")
+            fi
+            gh release create "$RELEASE_TAG" artifacts/*.vsix --verify-tag --title "PDF Local Copilot $RELEASE_TAG" "${notes[@]}"
+          fi
