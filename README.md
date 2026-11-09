@@ -16,8 +16,8 @@ The workflow is inspired by [Papilot](https://github.com/PapilotAI/papilot): rev
 
 ## What you can do
 
-- **Annotate the rendered paper.** Select text or draw a region around an equation or figure. Write the request directly below the selection and click **发送任务** (Send task).
-- **Chat without an annotation.** A request in the paper conversation enters the same review flow. Changes made this way are marked **来自会话** (From conversation).
+- **Annotate the rendered paper.** Select text or draw a region around an equation or figure. Write the request directly below the selection and click **Send Task** (Send task).
+- **Chat without an annotation.** A request in the paper conversation enters the same review flow. Changes made this way are marked **From Conversation** (From conversation).
 - **Keep one agent conversation.** Follow-up tasks queue in the current Codex or Claude session. Choose a model and reasoning effort for each turn.
 - **Edit and preview the same files.** The agent works in the real project directory. TeXpresso updates the current paper, including unsaved LaTeX edits.
 - **Review changes individually.** Text files open in VS Code's native Diff editor. TeX edits also highlight the corresponding rendered text. Checkboxes select changes; the checkmark accepts the selection.
@@ -31,13 +31,13 @@ The source, PDF, and conversation occupy separate, resizable editor groups. Open
 
 ![An inline PDF annotation editor with a Send task button](docs/images/annotate.png)
 
-Select a passage, click **添加批注** (Add note), and describe the change. **发送任务** saves and submits that annotation immediately. To combine several annotations with an overall instruction, select them in the **PDF 批注** sidebar and use its send button.
+Select a passage, click **Add Annotation** (Add note), and describe the change. **Send Task** saves and submits that annotation immediately. To combine several annotations with an overall instruction, select them in the **PDF Annotations** sidebar and use its send button.
 
 ### 2. Continue the conversation and review the result
 
 The conversation streams replies, tool calls, and command output. **Enter** sends a chat message; **Shift+Enter** inserts a newline. New tasks wait in the same session when the agent is busy.
 
-Click a change in **本次修改** (Current changes) to open its source diff. Click a PDF change marker to see the originating annotation or conversation request. The review card supports **接受修改** (Accept), **拒绝修改** (Reject), and **继续提问** (Follow up).
+Click a change in **Current Changes** (Current changes) to open its source diff. Click a PDF change marker to see the originating annotation or conversation request. The review card supports **Accept Change** (Accept), **Reject Change** (Reject), and **Follow Up** (Follow up).
 
 Each turn compares against the working draft immediately before that turn. Accepting a change confirms the current edit; rejecting it restores that part of the source. Accepted entries and their PDF decorations leave the pending list.
 
@@ -45,11 +45,11 @@ Each turn compares against the working draft immediately before that turn. Accep
 
 ![Local approval checkpoints and a read-only historical diff beside the current PDF](docs/images/history.png)
 
-Expand **本地修改历史** (Local change history), then click a file under a checkpoint. Its historical diff is read-only, while the manuscript and PDF continue to show the current working draft.
+Expand **Local History** (Local change history), then click a file under a checkpoint. Its historical diff is read-only, while the manuscript and PDF continue to show the current working draft.
 
-One batch approval creates one checkpoint containing the accepted changes. Saving, agent completion, and rejection create no checkpoints. History covers the current Git HEAD scope; a new commit clears the old checkpoint files and closes their historical diff tabs. **撤回本轮修改** (Undo this round) separately restores a round after checking for later edits.
+One batch approval creates one checkpoint containing the accepted changes. Saving, agent completion, and rejection create no checkpoints. History covers the current Git HEAD scope; a new commit clears the old checkpoint files and closes their historical diff tabs. **Undo Round** (Undo this round) separately restores a round after checking for later edits.
 
-*Screenshots show the included demo paper in an isolated development workspace. Agent replies are produced by the deterministic test CLI. Command and view labels are currently in Chinese.*
+*Screenshots show the included demo paper in an isolated development workspace. Agent replies are produced by the deterministic test CLI. The interface defaults to English; authored annotations and agent output retain their original language.*
 
 ## Build and install
 
@@ -77,12 +77,12 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.5.9.vsix
+code --install-extension artifacts/pdf-local-copilot-0.6.0.vsix
 ```
 
-Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: 启动 PDF 批注** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
+Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
 
-An existing PDF can also be opened with **Open With… → Paper PDF 批注**. Main-file discovery supports a matching `.tex` filename and `% !TeX root = …` directives.
+An existing PDF can also be opened with **Open With… → Paper PDF Annotations**. Main-file discovery supports a matching `.tex` filename and `% !TeX root = …` directives.
 
 ### Update an installed copy
 
@@ -92,7 +92,7 @@ After pulling changes, rebuild with `npm ci`, `npm run native:build`, and `npm r
 
 Use the agent selector below the conversation, then choose a model and reasoning effort. **Other model** accepts a CLI-supported model name. Codex suggestions come from its local model cache; Claude suggestions include aliases and models from the selected profile. The CLI remains responsible for model availability and authentication.
 
-A named Claude agent can use its own configuration directory. For example, create `uclaude` with `~/.claude-uni` through **＋ 新增 Claude 代理…**, or configure:
+A named Claude agent can use its own configuration directory. For example, create `uclaude` with `~/.claude-uni` through **＋ Add Claude Agent…**, or configure:
 
 ```json
 {
@@ -119,7 +119,7 @@ Local CLIs use their own configured model providers. Extension orchestration and
 - **Live preview:** TeXpresso's modified XeTeX engine, `texpresso-xetex`, incrementally renders the working document.
 - **Complete builds:** `latexmk -pdfxe` resolves references and bibliographies. A main-file directive such as `% !TeX program = pdflatex` or `lualatex` selects the corresponding full-build path. Project `.latexmkrc` files are supported.
 - **PDF → source:** Ctrl+click near rendered text; Cmd+click also works on macOS.
-- **Source → PDF:** use **跳转到对应 PDF 位置** in the TeX editor context menu.
+- **Source → PDF:** use **Go to PDF Location** in the TeX editor context menu.
 - **Reading:** continuous pages with a 5 px gap, cropped horizontal whitespace, zoom, and fit-to-width.
 
 Text that can be mapped to the current PDF receives review highlights. Edits to BibTeX, Markdown, code, invisible LaTeX commands, or removed text remain available in source diffs. Problems and Output expose compiler diagnostics.
@@ -176,7 +176,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.5.9.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.6.0.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.

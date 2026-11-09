@@ -21,15 +21,15 @@ const until = async fn => { const deadline = Date.now() + 60000; while (Date.now
   await until(async () => { try { browser = await chromium.connectOverCDP('http://127.0.0.1:9341'); return true; } catch { return false; } });
   await until(async () => { page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().includes('workbench')); return !!page; });
   await page.getByRole('treeitem', { name: /^main\.tex/ }).dblclick();
-  await page.getByRole('button', { name: 'PDF Local Copilot: 启动 PDF 批注', exact: true }).click();
+  await page.getByRole('button', { name: 'PDF Local Copilot: Open Paper', exact: true }).click();
   const check = async () => {
     let pdf, chat;
     await until(async () => { for (const frame of page.frames()) { if (await frame.locator('#paper .page-image').count().catch(() => 0)) pdf = frame; if (await frame.locator('body.chat-only #chat-agent').count().catch(() => 0)) chat = frame; } return !!pdf && !!chat; });
     await until(async () => await chat.locator('#chat-agent').inputValue() === 'custom:uclaude');
     assert.equal(await chat.locator('#chat-model').inputValue(), 'opus');
     assert.equal(JSON.parse(await fs.readFile(conversationFile, 'utf8')).id, session);
-    assert.equal(await page.getByRole('tab', { name: /^论文 · main\.tex/ }).count(), 1);
-    assert.equal(await page.getByRole('tab', { name: /论文对话.*main\.tex/ }).count(), 1);
+    assert.equal(await page.getByRole('tab', { name: /^Paper · main\.tex/ }).count(), 1);
+    assert.equal(await page.getByRole('tab', { name: /Paper Chat.*main\.tex/ }).count(), 1);
     await until(async () => {
       const notes = JSON.parse(await fs.readFile(noteFile, 'utf8')).notes;
       return notes.find(note => note.id === 'reload-macro').rects[0][1] > 100 && notes.find(note => note.id === 'reload-removed').anchorStatus === 'orphaned';

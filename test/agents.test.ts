@@ -12,5 +12,5 @@ test('named Claude profiles use arbitrary independent directories and inherit th
 test('configuration directories expand home syntax without shell evaluation', () => {
   assert.equal(claudeConfigDir('$HOME/.claude-uni'), path.join(os.homedir(), '.claude-uni'));
   assert.equal(claudeConfigDir('${HOME}/other-profile'), path.join(os.homedir(), 'other-profile'));
-  assert.throws(() => configuredAgents([{ name: 'Claude Code', type: 'claude' }]), /重复/);
+  assert.throws(() => configuredAgents([{ name: 'Claude Code', type: 'claude' }]), /Duplicate/);
 });

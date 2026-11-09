@@ -31,7 +31,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
   function createRow(page) {
     const row = make('section', 'page-row'); row.dataset.page = page;
     const paper = make('div', 'paper'); paper.id = page === 0 ? 'paper' : `paper-${page + 1}`; paper.dataset.page = page; paper.dataset.side = state.side;
-    const placeholder = make('p', 'page-loading', `正在加载第 ${page + 1} 页…`); paper.append(placeholder);
+    const placeholder = make('p', 'page-loading', `Loading page ${page + 1}…`); paper.append(placeholder);
     row.append(paper); pages.append(row);
     const record = { page, row, paper, frame: null, surface: null, renderKey: '', bounds: [0, 0, 612, 792], crop: [0, 0, 612, 792], diffToken: 0 };
     state.rows.set(page, record); observer.observe(row);
@@ -99,7 +99,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       if (page !== state.currentPage) { state.currentPage = page; documentState.page = page; vscode.setState(documentState); clearTimeout(visibleTimer); visibleTimer = setTimeout(() => send({ type: 'visiblePage', page }), 100); }
       requestVisible(); positionAnnotation();
       for (const record of state.rows.values()) if (Math.abs(record.page - page) > 3 && record.frame && state.draft?.page !== record.page && state.notes.find(n => n.id === state.openNote)?.page !== record.page) {
-        record.frame = null; record.renderKey = ''; record.paper.replaceChildren(make('p', 'page-loading', `第 ${record.page + 1} 页`));
+        record.frame = null; record.renderKey = ''; record.paper.replaceChildren(make('p', 'page-loading', `Page ${record.page + 1}`));
       }
       for (const side of ['before', 'after']) while (state.frames[side].size > 10) {
         const farthest = [...state.frames[side].keys()].sort((a, b) => Math.abs(b - page) - Math.abs(a - page))[0];
@@ -125,7 +125,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     if (record.renderKey !== nextKey && record.pendingKey !== nextKey) {
       record.pendingKey = nextKey;
       const clip = make('div', 'page-clip'), surface = make('div', 'page-surface');
-      const image = new Image(); image.className = 'page-image'; image.alt = `论文第 ${record.page + 1} 页`; image.draggable = false;
+      const image = new Image(); image.className = 'page-image'; image.alt = `Paper page ${record.page + 1}`; image.draggable = false;
       image.src = `data:${frame.header.mime};base64,${frame.data}`;
       const layer = make('div', 'text-layer');
       const lines = textLines(frame.header.characters || []), charNodes = new Map();
@@ -174,7 +174,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
         const mark = make('div', `note-highlight${state.focusedNote === note.id ? ' selected' : ''}`); rectStyle(mark, rect, record.bounds); record.surface.append(mark);
       }
       const rect = rects[0]; if (!rect) return;
-      const badge = make('button', 'note-marker', `✎${note.number || index + 1}`); badge.title = note.comment; badge.setAttribute('aria-label', `查看批注 ${note.number || index + 1}`);
+      const badge = make('button', 'note-marker', `✎${note.number || index + 1}`); badge.title = note.comment; badge.setAttribute('aria-label', `View Annotation ${note.number || index + 1}`);
       const x = Math.max(record.crop[0] + 1, rect[0] - 18); rectStyle(badge, [x, rect[1], x + 16, rect[1] + 14], record.crop);
       badge.dataset.noteId = note.id; badge.onclick = e => { e.stopPropagation(); openNote(note.id); };
       badge.dataset.markerAnchor = JSON.stringify([rect[0], rect[1]]); badge.dataset.markerSide = 'left';
@@ -184,7 +184,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       for (const rect of state.draft.rects) { const mark = make('div', 'selection-box'); rectStyle(mark, rect, record.bounds); record.surface.append(mark); }
       if (state.draft.phase === 'editing') {
         const rect = state.draft.rects[0], x = Math.max(record.crop[0] + 1, rect[0] - 18);
-        const badge = make('button', 'note-marker draft-marker', String(notesFor(record.page).length + 1)); badge.title = '继续编辑这条批注';
+        const badge = make('button', 'note-marker draft-marker', String(notesFor(record.page).length + 1)); badge.title = 'Continue editing this annotation';
         rectStyle(badge, [x, rect[1], x + 16, rect[1] + 14], record.crop);
         badge.onclick = e => { e.stopPropagation(); state.draft.hidden = false; renderAnnotation(); }; record.paper.append(badge);
         badge.dataset.markerAnchor = JSON.stringify([rect[0], rect[1]]); badge.dataset.markerSide = 'left';
@@ -194,7 +194,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       if (!marker.unresolved) marker.rects.forEach(rect => { const mark = make('div', `review-mark ${marker.decision}${state.selectedEdit === marker.id ? ' selected' : ''}`); mark.dataset.reviewId = marker.id; rectStyle(mark, rect, record.bounds); record.surface.append(mark); });
       const rect = marker.rects[0]; if (!rect) return;
       const badge = make('button', `review-marker ${marker.decision}`, `${marker.decision === 'accepted' ? '✓' : marker.decision === 'rejected' ? '×' : ''}${index + 1}`);
-      badge.dataset.reviewId = marker.id; badge.title = `${marker.label} · ${marker.originLabel || '修改'} · 点击逐处审阅`; badge.setAttribute('aria-label', `审阅修改 ${index + 1} · ${marker.originLabel || ''}`);
+      badge.dataset.reviewId = marker.id; badge.title = `${marker.label} · ${marker.originLabel || 'Change'} · Click to review this change`; badge.setAttribute('aria-label', `Review Change ${index + 1} · ${marker.originLabel || ''}`);
       badge.setAttribute('data-vscode-context', JSON.stringify({ webviewSection: 'reviewChange', reviewId: marker.id, preventDefaultContextMenuItems: true }));
       const x = Math.max(record.crop[0] + 1, Math.min(rect[2] + 2, record.crop[2] - 2)); rectStyle(badge, [x, rect[1], x + 21, rect[1] + 16], record.crop);
       badge.onclick = e => { e.stopPropagation(); send({ type: 'reviewChange', id: marker.id }); }; record.paper.append(badge);
@@ -213,8 +213,8 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     badges.forEach((badge, i) => Object.assign(badge.style, { left: `${positions[i].x}px`, top: `${positions[i].y}px`, width: '22px', height: '18px' }));
   }
   function action(label, fn, className = '') { const button = make('button', className, label); button.type = 'button'; button.onclick = fn; return button; }
-  const popover = make('section', 'annotation-popover'); popover.id = 'annotation-popover'; popover.hidden = true; popover.setAttribute('aria-label', 'PDF 批注意见框');
-  const addNote = action('✎ 添加批注', () => { if (state.draft) { window.getSelection()?.removeAllRanges(); state.draft.phase = 'editing'; state.draft.hidden = false; renderAnnotation(); requestAnimationFrame(() => popover.querySelector('textarea')?.focus({ preventScroll: true })); } }, 'selection-action'); addNote.hidden = true;
+  const popover = make('section', 'annotation-popover'); popover.id = 'annotation-popover'; popover.hidden = true; popover.setAttribute('aria-label', 'PDF Annotation');
+  const addNote = action('✎ Add Annotation', () => { if (state.draft) { window.getSelection()?.removeAllRanges(); state.draft.phase = 'editing'; state.draft.hidden = false; renderAnnotation(); requestAnimationFrame(() => popover.querySelector('textarea')?.focus({ preventScroll: true })); } }, 'selection-action'); addNote.hidden = true;
   viewport.append(popover, addNote); let popupKey = '';
   function activeAnnotation() {
     if (state.openReview) {
@@ -238,7 +238,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     const current = activeAnnotation(); if (!current) return;
     const edit = current.draft || state.edits.get(current.note.id); if (!edit || edit.pending) return;
     const input = popover.querySelector('textarea'); if (input) edit.comment = input.value;
-    if (!edit.comment?.trim()) { edit.error = '请填写批注。'; renderAnnotation(); return; }
+    if (!edit.comment?.trim()) { edit.error = 'Enter an annotation.'; renderAnnotation(); return; }
     edit.pending = true; edit.error = ''; edit.queue = queue; edit.hidden = hide;
     if (current.draft) send({ type: 'annotate', draftId: edit.id, header: edit.header, rects: edit.rects, quote: edit.quote, kind: edit.kind, session: edit.session, comment: edit.comment, runAfterSave: queue });
     else send({ type: 'editNote', id: current.note.id, comment: edit.comment });
@@ -278,25 +278,25 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       popupKey = key; popover.replaceChildren();
       const body = edit ? make('textarea', 'comment-input') : make('p', 'comment-body', current.note.comment);
       if (edit) {
-        body.rows = 3; body.maxLength = 20000; body.value = edit.comment || ''; body.placeholder = '写下修改意见…'; body.setAttribute('aria-label', '批注意见');
+        body.rows = 3; body.maxLength = 20000; body.value = edit.comment || ''; body.placeholder = 'Describe the revision…'; body.setAttribute('aria-label', 'Annotation text');
         body.oninput = () => { edit.comment = body.value; };
         body.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); submitAnnotation(); } if (e.key === 'Escape') { e.stopPropagation(); closeAnnotation(); } };
       }
       const error = make('p', 'card-error'); error.hidden = true; const footer = make('div', 'card-actions');
-      if (edit) footer.append(action('保存', () => submitAnnotation(), 'primary'));
-      else footer.append(action('编辑', () => openNote(current.note.id, true)));
-      footer.append(action('删除', () => {
+      if (edit) footer.append(action('Save', () => submitAnnotation(), 'primary'));
+      else footer.append(action('Edit', () => openNote(current.note.id, true)));
+      footer.append(action('Delete', () => {
         if (current.draft) { state.draft = null; renderAnnotation(); for (const record of state.rows.values()) if (record.frame) drawMarks(record); }
         else { send({ type: 'deleteNote', id: current.note.id }); state.openNote = null; renderAnnotation(); }
       }));
-      const submit = action('发送任务', () => { if (current.draft) submitAnnotation(true); else { if (edit?.comment !== undefined && edit.comment !== current.note.comment) submitAnnotation(); send({ type: 'runNote', id: current.note.id }); } }, 'send-note');
-      submit.setAttribute('aria-label', '发送任务'); footer.append(submit, action('×', () => closeAnnotation(), 'close-annotation'));
-      footer.lastChild.title = '收起批注，保留高亮和编号'; popover.append(body, error, footer);
+      const submit = action('Send Task', () => { if (current.draft) submitAnnotation(true); else { if (edit?.comment !== undefined && edit.comment !== current.note.comment) submitAnnotation(); send({ type: 'runNote', id: current.note.id }); } }, 'send-note');
+      submit.setAttribute('aria-label', 'Send Task'); footer.append(submit, action('×', () => closeAnnotation(), 'close-annotation'));
+      footer.lastChild.title = 'Hide the annotation, keeping its highlight and marker'; popover.append(body, error, footer);
     }
     const textarea = popover.querySelector('textarea'); if (textarea) textarea.disabled = !!edit?.pending;
     popover.querySelectorAll('button').forEach(button => { button.disabled = !!edit?.pending; });
     const submitted = current.note && state.chat?.messages.some(message => ['queued', 'running'].includes(message.status) && message.notes?.some(note => note.id === current.note.id && note.comment === current.note.comment)), submit = popover.querySelector('.send-note');
-    if (submit) { submit.textContent = submitted ? '任务已发送' : '发送任务'; submit.disabled = !!edit?.pending || !!submitted; }
+    if (submit) { submit.textContent = submitted ? 'Task Sent' : 'Send Task'; submit.disabled = !!edit?.pending || !!submitted; }
     if (!edit) popover.querySelector('.comment-body').textContent = current.note.comment;
     const error = popover.querySelector('.card-error'); error.textContent = edit?.error || ''; error.hidden = !edit?.error;
     positionAnnotation();
@@ -305,21 +305,21 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     addNote.hidden = true; popover.hidden = false;
     const key = `review:${review.id}:${review.decision}:${review.pending}:${review.error || ''}`;
     if (popupKey === key) return; popupKey = key; popover.replaceChildren();
-    const label = review.origin === 'annotation' ? review.notes.map(note => `批注 ${note.number || ''}`).join('、') || '本轮批注' : review.origin === 'session' ? '来自会话' : '来自编辑器';
+    const label = review.origin === 'annotation' ? review.notes.map(note => `Annotation ${note.number || ''}`).join(', ') || 'Annotations' : review.origin === 'session' ? 'From Conversation' : 'From Editor';
     popover.append(make('strong', 'review-origin', label));
     for (const note of review.notes) {
       if (note.quote) popover.append(make('blockquote', 'review-quote', note.quote));
       popover.append(make('p', 'comment-body', note.comment));
     }
     if (review.instruction) popover.append(make('p', 'review-instruction', review.instruction));
-    const change = make('details', 'review-text-diff'); change.append(make('summary', '', '查看文字改动'), make('pre', '', `− ${review.removed}\n+ ${review.inserted}`)); popover.append(change);
+    const change = make('details', 'review-text-diff'); change.append(make('summary', '', 'View Text Changes'), make('pre', '', `− ${review.removed}\n+ ${review.inserted}`)); popover.append(change);
     if (review.error) popover.append(make('p', 'card-error', review.error));
     const footer = make('div', 'card-actions');
     const decide = decision => { state.openReview.pending = true; send({ type: 'reviewDecision', id: review.id, decision }); renderAnnotation(); };
-    const accept = action(review.decision === 'accepted' ? '已接受' : '接受修改', () => decide('accepted'), 'primary'); accept.disabled = !!review.pending || review.decision === 'accepted';
-    const reject = action(review.decision === 'rejected' ? '已拒绝' : '拒绝修改', () => decide('rejected')); reject.disabled = !!review.pending || review.decision === 'rejected';
-    const follow = action('继续提问', () => { send({ type: 'reviewFollowup', id: review.id }); closeAnnotation(); }); follow.disabled = !!review.pending;
-    footer.append(accept, reject, follow, action('源码差异', () => send({ type: 'reviewDiff', id: review.id })), action('×', () => closeAnnotation())); popover.append(footer);
+    const accept = action(review.decision === 'accepted' ? 'Accepted' : 'Accept Change', () => decide('accepted'), 'primary'); accept.disabled = !!review.pending || review.decision === 'accepted';
+    const reject = action(review.decision === 'rejected' ? 'Rejected' : 'Reject Change', () => decide('rejected')); reject.disabled = !!review.pending || review.decision === 'rejected';
+    const follow = action('Follow Up', () => { send({ type: 'reviewFollowup', id: review.id }); closeAnnotation(); }); follow.disabled = !!review.pending;
+    footer.append(accept, reject, follow, action('Source Diff', () => send({ type: 'reviewDiff', id: review.id })), action('×', () => closeAnnotation())); popover.append(footer);
   }
   function renderCards() { renderAnnotation(); }
   function layoutCards(record) { record.row.style.minHeight = `${record.paper.getBoundingClientRect().height}px`; layoutMarkerBadges(record); positionAnnotation(); }
@@ -464,31 +464,31 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
   function renderModelControls(options = {}) {
     const catalog = state.chat?.catalogs[chatAgent.value] || { models: [], efforts: [] };
     const option = (value, label) => { const element = document.createElement('option'); element.value = value; element.textContent = label; return element; };
-    chatModel.replaceChildren(option('', '默认（代理设置）'), ...catalog.models.map(model => option(model.value, model.label)));
+    chatModel.replaceChildren(option('', 'Default (agent settings)'), ...catalog.models.map(model => option(model.value, model.label)));
     if (options.model && !catalog.models.some(model => model.value === options.model)) chatModel.append(option(options.model, options.model));
-    chatModel.append(option('__custom__', '其他模型…')); chatModel.value = options.model || '';
+    chatModel.append(option('__custom__', 'Other Model…')); chatModel.value = options.model || '';
     const efforts = catalog.models.find(model => model.value === chatModel.value)?.efforts || catalog.efforts;
-    chatEffort.replaceChildren(option('', '默认'), ...efforts.map(effort => option(effort, effort)));
+    chatEffort.replaceChildren(option('', 'Default'), ...efforts.map(effort => option(effort, effort)));
     chatEffort.value = efforts.includes(options.effort) ? options.effort : '';
   }
   function saveChatDraft() { clearTimeout(chatDraftTimer); send({ type: 'chatDraft', text: chatInput.value, agent: chatAgent.value, options: selectedOptions() }); }
   function updateChatControls() {
     const chat = state.chat, notes = chat?.queuedNotes || [], ready = !!chatInput.value.trim() || notes.length > 0;
     document.querySelector('#send-chat').disabled = !chat || !ready || !!state.draft?.pending;
-    document.querySelector('#send-chat').textContent = chat?.busy || chat?.paused ? '发送并排队' : '发送';
+    document.querySelector('#send-chat').textContent = chat?.busy || chat?.paused ? 'Send and Queue' : 'Send';
     chatAgent.disabled = !!chat?.lockedAgent;
     document.querySelector('#new-session').disabled = !chat;
     document.querySelector('#stop-chat').hidden = !chat?.busy;
     document.querySelector('#resume-queue').hidden = !chat?.paused || !(chat?.tasks.length);
     document.querySelector('#toggle-manuscript').hidden = !chat?.hasTask;
-    document.querySelector('#toggle-manuscript').textContent = chat?.direct ? '查看修改差异' : chat?.view === 'after' ? '查看原稿' : '查看修改稿';
+    document.querySelector('#toggle-manuscript').textContent = chat?.direct ? 'View Changes' : chat?.view === 'after' ? 'Show Original' : 'Show Working Draft';
     document.querySelector('#undo-working').disabled = !!chat?.busy || !chat?.hasUndo;
     const turns = chat?.messages.filter(m => m.role === 'user').length || 0;
-    document.querySelector('#session-status').textContent = chat?.paused ? '队列已暂停；后续任务仍保留在当前会话。' : chat?.busy ? `当前会话执行中 · ${chat.tasks.length} 项等待执行` : turns ? `同一会话 · 已发送 ${turns} 轮任务` : '点击批注的箭头加入队列，再点发送。';
+    document.querySelector('#session-status').textContent = chat?.paused ? 'Queue paused; subsequent tasks remain in this conversation.' : chat?.busy ? `Session running · Queue: ${chat.tasks.length}` : turns ? `Same session · ${turns} ${turns === 1 ? 'turn' : 'turns'} sent` : 'Select annotations in the sidebar to send them together.';
   }
   function renderAgentOutput(article, message) {
     const text = article.querySelector('.chat-message-text');
-    text.textContent = message.text || (message.status === 'running' && !message.activities?.length ? '等待代理输出…' : '');
+    text.textContent = message.text || (message.status === 'running' && !message.activities?.length ? 'Waiting for agent output…' : '');
     let activities = article.querySelector('.agent-activities');
     if (!activities && message.activities?.length) { activities = make('div', 'agent-activities'); article.append(activities); }
     for (const activity of message.activities || []) {
@@ -514,37 +514,37 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     const host = document.querySelector('#chat-messages'), bottom = host.scrollHeight - host.clientHeight - host.scrollTop < 50, oldTop = host.scrollTop;
     const expanded = new Set([...host.querySelectorAll('.agent-activity[open]')].map(row => `${row.closest('.chat-message').dataset.messageId}:${row.dataset.activityId}`));
     host.replaceChildren();
-    if (!chat.messages.length) { const welcome = make('div', 'chat-welcome'); welcome.append(make('div', 'welcome-symbol', '✦'), make('h2', '', '这轮想修改什么？'), make('p', '', '在 PDF 上添加批注，用箭头加入任务，或在下方描述整体要求。')); host.append(welcome); }
+    if (!chat.messages.length) { const welcome = make('div', 'chat-welcome'); welcome.append(make('div', 'welcome-symbol', '✦'), make('h2', '', 'What would you like to revise?'), make('p', '', 'Annotate the PDF or describe your revision below.')); host.append(welcome); }
     for (const message of chat.messages) {
       const article = make('article', `chat-message ${message.role} ${message.status || ''}`); article.dataset.messageId = message.id;
-      if (message.role !== 'system') article.append(make('div', 'chat-author', message.role === 'user' ? '你' : chat.agentName || (chat.agent === 'claude' ? 'Claude Code' : 'Codex')));
+      if (message.role !== 'system') article.append(make('div', 'chat-author', message.role === 'user' ? 'You' : chat.agentName || (chat.agent === 'claude' ? 'Claude Code' : 'Codex')));
       article.append(make('div', 'chat-message-text'));
       renderAgentOutput(article, message);
       for (const row of article.querySelectorAll('.agent-activity')) row.open = expanded.has(`${message.id}:${row.dataset.activityId}`);
-      for (const note of message.notes || []) { const chip = action(`第 ${note.page + 1} 页 · ${note.comment}`, () => send({ type: 'revealNote', id: note.id }), 'message-note'); chip.title = note.comment; article.append(chip); }
-      if (message.status === 'queued') article.append(make('small', 'message-status', '排队中'));
-      if (message.status === 'running') article.append(make('small', 'message-status', '执行中…'));
-      if (message.status === 'interrupted') article.append(make('small', 'message-status', '上次执行已中断，可在当前会话继续。'));
+      for (const note of message.notes || []) { const chip = action(`Page ${note.page + 1} · ${note.comment}`, () => send({ type: 'revealNote', id: note.id }), 'message-note'); chip.title = note.comment; article.append(chip); }
+      if (message.status === 'queued') article.append(make('small', 'message-status', 'Queued'));
+      if (message.status === 'running') article.append(make('small', 'message-status', 'Running…'));
+      if (message.status === 'interrupted') article.append(make('small', 'message-status', 'The previous run was interrupted. Continue in this session.'));
       host.append(article);
     }
     if (bottom) host.scrollTop = host.scrollHeight; else host.scrollTop = oldTop;
     const notes = document.querySelector('#queued-notes'); notes.replaceChildren();
-    if (chat.queuedNotes.length) notes.append(make('div', 'queue-heading', `待发送批注 · ${chat.queuedNotes.length}`));
+    if (chat.queuedNotes.length) notes.append(make('div', 'queue-heading', `Draft Annotations · ${chat.queuedNotes.length}`));
     for (const note of chat.queuedNotes) {
       const row = make('div', 'queued-note'); row.dataset.noteId = note.id;
-      const label = action(`第 ${note.page + 1} 页 · ${note.comment}`, () => send({ type: 'revealNote', id: note.id }), 'queued-note-label'); label.title = note.comment;
-      const remove = action('×', () => send({ type: 'removeQueuedNote', id: note.id }), 'remove-queued-note'); remove.setAttribute('aria-label', '移除这条待发送批注');
+      const label = action(`Page ${note.page + 1} · ${note.comment}`, () => send({ type: 'revealNote', id: note.id }), 'queued-note-label'); label.title = note.comment;
+      const remove = action('×', () => send({ type: 'removeQueuedNote', id: note.id }), 'remove-queued-note'); remove.setAttribute('aria-label', 'Remove this annotation from the draft');
       row.append(label, remove); notes.append(row);
     }
     const tasks = document.querySelector('#task-queue'); tasks.replaceChildren(); tasks.hidden = !chat.tasks.length;
-    if (chat.tasks.length) tasks.append(make('div', 'queue-heading', `待执行任务 · ${chat.tasks.length}`));
+    if (chat.tasks.length) tasks.append(make('div', 'queue-heading', `Queued Tasks · ${chat.tasks.length}`));
     for (const task of chat.tasks) {
       const row = make('div', 'queued-turn'); row.dataset.turnId = task.id;
-      row.append(make('span', '', task.text || `${task.count} 条 PDF 批注`), action('×', () => send({ type: 'removeQueuedTurn', id: task.id }))); tasks.append(row);
+      row.append(make('span', '', task.text || `${task.count}  PDF Annotations`), action('×', () => send({ type: 'removeQueuedTurn', id: task.id }))); tasks.append(row);
     }
     if (document.activeElement !== chatInput) chatInput.value = chat.draft || '';
     chatAgent.replaceChildren(...chat.agents.map(profile => { const option = document.createElement('option'); option.value = profile.id; option.textContent = profile.name; option.title = profile.claude_config_dir || profile.command; return option; }));
-    const addAgent = document.createElement('option'); addAgent.value = '__add_claude__'; addAgent.textContent = '＋ 新增 Claude 代理…'; chatAgent.append(addAgent);
+    const addAgent = document.createElement('option'); addAgent.value = '__add_claude__'; addAgent.textContent = '＋ Add Claude Agent…'; chatAgent.append(addAgent);
     chatAgent.value = chat.agent; renderModelControls(chat.runOptions); updateChatControls(); renderAnnotation();
   }
   function sendChat(ids) {
@@ -569,9 +569,9 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
   document.querySelector('#new-session').onclick = () => { document.querySelector('#chat-error').hidden = true; send({ type: 'newSession' }); };
   document.querySelector('#resume-queue').onclick = () => send({ type: 'resumeQueue' });
   document.querySelector('#stop-chat').onclick = () => send({ type: 'stopQueue' });
-  const logs = action('执行日志', () => send({ type: 'showLogs' })); document.querySelector('.chat-header').append(logs);
-  const undo = action('撤回本轮', () => send({ type: 'undoWorkingChanges' })); undo.id = 'undo-working'; document.querySelector('.chat-header').append(undo);
-  const toggle = action('查看原稿', () => send({ type: 'toggleManuscript' })); toggle.id = 'toggle-manuscript'; toggle.hidden = true; document.querySelector('.chat-header').append(toggle);
+  const logs = action('Logs', () => send({ type: 'showLogs' })); document.querySelector('.chat-header').append(logs);
+  const undo = action('Undo Round', () => send({ type: 'undoWorkingChanges' })); undo.id = 'undo-working'; document.querySelector('.chat-header').append(undo);
+  const toggle = action('Show Original', () => send({ type: 'toggleManuscript' })); toggle.id = 'toggle-manuscript'; toggle.hidden = true; document.querySelector('.chat-header').append(toggle);
   updateChatControls();
   let sourceLocationTimer;
   window.addEventListener('message', ({ data: message }) => {
@@ -596,7 +596,7 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
       if (message.session !== state.meta[message.side]?.session) return;
       state.failed.add(key(message.side, message.page, message.session));
       if (state.pending?.key === key(message.side, message.page, message.session)) state.pending = null;
-      const record = state.rows.get(message.page); if (message.side === state.side && record && !record.frame) { const failure = make('div', 'page-failure'); failure.append(make('p', '', message.message), action('重新加载此页', () => enqueue(state.side, message.page, true))); record.paper.replaceChildren(failure); }
+      const record = state.rows.get(message.page); if (message.side === state.side && record && !record.frame) { const failure = make('div', 'page-failure'); failure.append(make('p', '', message.message), action('Reload Page', () => enqueue(state.side, message.page, true))); record.paper.replaceChildren(failure); }
       pump();
     } else if (message.type === 'notes') {
       const previous = state.notes.find(n => n.id === state.openNote), opened = message.notes.find(n => n.id === state.openNote);
@@ -628,7 +628,13 @@ import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, li
     }
     else if (message.type === 'chatSent') { const input = document.querySelector('#chat-input'); if (input.value === message.instruction) input.value = ''; updateChatControls(); }
     else if (message.type === 'chatError') { document.querySelector('#chat-error').textContent = message.message; document.querySelector('#chat-error').hidden = false; updateChatControls(); }
-    else if (message.type === 'focusChat') document.querySelector('#chat-input').focus();
+    else if (message.type === 'focusChat') {
+      if (typeof message.draft === 'string') {
+        clearTimeout(chatDraftTimer); chatInput.value = message.draft;
+        document.querySelector('#chat-error').hidden = true; updateChatControls(); saveChatDraft();
+      }
+      chatInput.focus(); chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+    }
     else if (message.type === 'navigate') navigate(message.page);
     else if (message.type === 'sourcePosition') {
       clearTimeout(sourceLocationTimer); state.sourceLocation = message;

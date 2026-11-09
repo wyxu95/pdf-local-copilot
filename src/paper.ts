@@ -20,6 +20,7 @@ import type { ReviewBase } from './review-base';
 import { alignReviewSource } from './review-geometry';
 import { LocalHistory, type HistoryPoint } from './local-history';
 import { historyUri } from './history-files';
+import { displayHistoryLabel } from './history-label';
 
 interface UI {
   output: vscode.OutputChannel; diagnostics: vscode.DiagnosticCollection;
@@ -49,6 +50,8 @@ export class Paper {
   private previewSessions = { before: 0, after: 0 };
   private mainViewSide: 'before' | 'after' = 'before';
   private sourceGroup?: vscode.TabGroup;
+  private pendingChatFocus?: { draft?: string };
+  private openingChat?: Promise<void>;
   localHistory?: LocalHistory;
   private conversation: ConversationStore;
   private catalogs: Record<string, ModelCatalog> = {};
@@ -65,7 +68,7 @@ export class Paper {
     this.key = `task:${root}:${main}`; this.lastApplication = context.workspaceState.get<string>(`undo:${root}`);
     this.noteFile = path.join(root, '.pdf-local-copilot', `${createHash('sha256').update(path.relative(root, main)).digest('hex').slice(0, 12)}.json`);
     this.conversation = new ConversationStore(path.join(path.dirname(this.noteFile), 'conversations', path.basename(this.noteFile)), context.workspaceState.get<Agent>('lastAgent', 'codex'));
-    this.comments = vscode.comments.createCommentController(`pdfLocal-${randomUUID()}`, 'PDF 论文批注'); this.resources.push(this.comments);
+    this.comments = vscode.comments.createCommentController(`pdfLocal-${randomUUID()}`, 'PDF Annotations'); this.resources.push(this.comments);
     this.panel = this.createPanel('before', column, panel); const created = this.panel; created.onDidDispose(() => { if (this.panel === created) void this.dispose(); });
   }
   restorePdfPanel(panel: vscode.WebviewPanel, page = 0) {
@@ -83,7 +86,7 @@ export class Paper {
     const chatOnly = side === 'chat';
     const panel = supplied || vscode.window.createWebviewPanel(chatOnly ? 'pdfLocal.chat' : 'pdfLocal.paper', '', { viewColumn: column, preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
     const panelSide = (): 'before' | 'after' => chatOnly || panel === this.panel ? this.mainViewSide : side as 'before' | 'after';
-    panel.title = `${chatOnly ? '论文对话' : side === 'before' ? '论文' : '修改稿'} · ${path.basename(this.main)}`;
+    panel.title = `${chatOnly ? 'Paper Chat' : side === 'before' ? 'Paper' : 'Working Draft'} · ${path.basename(this.main)}`;
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     panel.iconPath = new vscode.ThemeIcon(chatOnly ? 'comment-discussion' : side === 'before' ? 'book' : 'git-compare');
     this.resources.push(panel.onDidChangeViewState(e => { if (e.webviewPanel.active) { this.currentSide = panelSide(); this.ui.activate(this); if (!chatOnly) this.post(panel, { type: 'reportVisiblePage' }); } else if (!chatOnly) this.post(panel, { type: 'dismissReview' }); }));
@@ -133,7 +136,7 @@ export class Paper {
       });
     }));
     const nonce = randomUUID().replaceAll('-', ''), resource = (file: string) => panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', file));
-    panel.webview.html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src ${panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${resource('style.css')}"><title>论文 PDF</title></head><body class="${chatOnly ? 'chat-only' : 'secondary'}"><div id="reader"><main id="viewport"><div id="pages"></div></main><aside id="chat" aria-label="论文对话"><header class="chat-header"><strong>当前会话</strong><button id="new-session" title="只有新建会话才重置代理上下文">新会话</button></header><div id="chat-messages" role="log" aria-live="polite"></div><div id="task-queue"></div><div id="chat-error" role="alert" hidden></div><section id="chat-composer"><div id="queued-notes"></div><textarea id="chat-input" rows="4" aria-label="总体修改要求" placeholder="描述整体修改要求，或把 PDF 批注加入任务…"></textarea><div class="chat-controls"><select id="chat-agent" aria-label="本地代理"><option value="codex">Codex</option><option value="claude">Claude Code</option></select><button id="resume-queue" hidden>继续队列</button><button id="stop-chat" hidden>停止</button><button id="send-chat" class="primary">发送</button></div><div class="model-controls"><label>模型<select id="chat-model" aria-label="模型"></select></label><label>思考强度<select id="chat-effort" aria-label="思考强度"></select></label></div><p class="chat-hint">Enter 发送 · Shift+Enter 换行</p><p id="session-status">批注先加入待发送队列，点击发送后一起执行。</p></section></aside></div><script nonce="${nonce}" src="${resource('app.js')}"></script></body></html>`;
+    panel.webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src ${panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${resource('style.css')}"><title>Paper PDF</title></head><body class="${chatOnly ? 'chat-only' : 'secondary'}"><div id="reader"><main id="viewport"><div id="pages"></div></main><aside id="chat" aria-label="Paper Chat"><header class="chat-header"><strong>Current Session</strong><button id="new-session" title="Start a new session to reset the agent context">New Session</button></header><div id="chat-messages" role="log" aria-live="polite"></div><div id="task-queue"></div><div id="chat-error" role="alert" hidden></div><section id="chat-composer"><div id="queued-notes"></div><textarea id="chat-input" rows="4" aria-label="Revision request" placeholder="Describe the revision, or select PDF annotations…"></textarea><div class="chat-controls"><select id="chat-agent" aria-label="Local Agent"><option value="codex">Codex</option><option value="claude">Claude Code</option></select><button id="resume-queue" hidden>Resume Queue</button><button id="stop-chat" hidden>Stop</button><button id="send-chat" class="primary">Send</button></div><div class="model-controls"><label>Model<select id="chat-model" aria-label="Model"></select></label><label>Reasoning Effort<select id="chat-effort" aria-label="Reasoning Effort"></select></label></div><p class="chat-hint">Enter to send · Shift+Enter for a newline</p><p id="session-status">Select annotations in the sidebar and send them together.</p></section></aside></div><script nonce="${nonce}" src="${resource('app.js')}"></script></body></html>`;
     return panel;
   }
   private post(panel: vscode.WebviewPanel | undefined, value: object) { if (!this.disposed && panel) void panel.webview.postMessage(value); }
@@ -146,7 +149,7 @@ export class Paper {
   private syncPanel(panel: vscode.WebviewPanel, side: string) {
     const chatOnly = panel === this.chatPanel;
     this.post(panel, { type: 'init', root: this.root, main: this.main, page: this.page, side, tool: this.tool, zoom: this.zoomLevel, hasTask: !!this.task, notes: this.notes, difference: this.difference, markers: this.markers, chatVisible: chatOnly, chatOnly });
-    if (chatOnly) { this.chatReady = true; this.post(panel, { type: 'chatState', ...this.chatState() }); this.flushNoteSend(); return; }
+    if (chatOnly) { this.chatReady = true; this.post(panel, { type: 'chatState', ...this.chatState() }); this.flushChatActions(); return; }
     for (const [s, preview] of [['before', this.before], ['after', this.after]] as const) if (preview?.lastFrame) {
       this.post(panel, { type: 'previewState', side: s, session: this.previewSessions[s], ...preview.snapshot() });
       this.post(panel, { type: 'frame', side: s, session: this.previewSessions[s], header: preview.lastFrame.header, data: preview.lastFrame.bytes.toString('base64') });
@@ -161,12 +164,12 @@ export class Paper {
   }
   private async jumpToSource(m: { header: FrameHeader; x: number; y: number; session: number }, side: 'before' | 'after') {
     const preview = side === 'before' ? this.before : this.after;
-    if (!preview || m.session !== this.previewSessions[side] || !m.header || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error('该页尚未完成排版。');
+    if (!preview || m.session !== this.previewSessions[side] || !m.header || !Number.isFinite(m.x) || !Number.isFinite(m.y)) throw new Error('This page has not finished rendering.');
     const header = await preview.activatePage(m.header.page);
-    if (m.header.sequence !== header.sequence && JSON.stringify(m.header.characters) !== JSON.stringify(header.characters)) throw new Error('页面内容已改变，请在更新后的段落上再次点击。');
+    if (m.header.sequence !== header.sequence && JSON.stringify(m.header.characters) !== JSON.stringify(header.characters)) throw new Error('The page content has changed. Click the updated passage again.');
     const [x, y] = nearestTextPoint(header.characters || [], m.x, m.y) || [m.x, m.y];
     const location = await preview.locate(header, x, y);
-    if (!inside(preview.root, location.file)) throw new Error('此处没有对应的项目 LaTeX 文本。');
+    if (!inside(preview.root, location.file)) throw new Error('No project LaTeX source is mapped to this location.');
     const target = side === 'before' && this.task ? path.join(this.root, path.relative(preview.root, location.file)) : location.file;
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(target));
     const sourceLine = this.task ? mapLine(await fs.readFile(location.file, 'utf8'), document.getText(), location.line).line : location.line;
@@ -205,7 +208,7 @@ export class Paper {
   async open(restoring = false) {
     try {
       const saved = JSON.parse(await fs.readFile(this.noteFile, 'utf8')); this.notes = saved.notes;
-      if (!Array.isArray(this.notes)) throw new Error('批注文件格式无效');
+      if (!Array.isArray(this.notes)) throw new Error('Invalid annotation data');
       this.notes.forEach((note, index) => { note.number ??= index + 1; });
       for (const [file, text] of Object.entries(saved.sources || {})) if (typeof text === 'string') this.versions.set(file, text);
       for (const [file, text] of Object.entries(saved.proposalSources || {})) if (typeof text === 'string') this.proposalVersions.set(file, text);
@@ -247,7 +250,7 @@ export class Paper {
       }
     };
     watcher.onDidChange(changed); watcher.onDidCreate(changed); watcher.onDidDelete(changed); this.resources.push(watcher);
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: '准备论文 PDF、引用与实时预览' }, async () => {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Preparing the PDF, references, and live preview' }, async () => {
       await this.startSide('before', this.root, path.relative(this.root, this.main));
       if (this.task) await this.refreshReview(this.task.mode === 'workspace');
       for (const doc of vscode.workspace.textDocuments) if (doc.isDirty && inside(this.root, doc.uri.fsPath) && !inside(path.join(this.root, '.pdf-local-copilot'), doc.uri.fsPath)) this.before!.update(doc.uri.fsPath, doc.getText());
@@ -270,8 +273,8 @@ export class Paper {
       await fs.writeFile(file, JSON.stringify({ task: { id: previous.id, main: previous.main, sessions: previous.sessions }, review, additional, unsaved }, null, 2));
       const migrated = await WorkingTree.create(this.root, this.main, previous.sessions);
       this.conversation.value.task = migrated.task; this.task = undefined; this.workingTree = undefined;
-      this.conversation.value.contextUpdates.push(`工作目录已迁移到作者的真实项目 ${this.root}。当前文件是唯一工作稿；旧提案仅存档在 ${file}。请重新读取当前文件，后续直接编辑项目文件。`);
-      this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: '已切换为直接编辑当前项目。旧提案按改动文件归档；当前源码、PDF 与代理使用同一份工作稿。' });
+      this.conversation.value.contextUpdates.push(`The working directory is now the live project ${this.root}. The current files are the working draft. The previous proposal is archived at ${file}. Read and edit the current project files for subsequent tasks.`);
+      this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: 'The agent now edits the live project. Earlier proposals are archived by changed file; the source, PDF, and agent share the current working draft.' });
       for (const note of this.notes) {
         if (note.proposalTask && note.source) try {
           const from = this.proposalVersions.get(note.source.file) || await fs.readFile(path.join(previous.proposal, note.source.file), 'utf8');
@@ -310,7 +313,7 @@ export class Paper {
     if (side === 'before') this.beforeBuild = build; else this.afterBuild = build;
     let pdf: string | undefined;
     try { await this.buildNow(build); pdf = engine === 'xelatex' ? undefined : build.pdf; }
-    catch (e) { if (engine !== 'xelatex') throw e; this.log(`初次完整构建失败，TeXpresso 将继续显示可渲染部分。${String(e)}\n`); }
+    catch (e) { if (engine !== 'xelatex') throw e; this.log(`The initial full build failed. TeXpresso will display the content it can render. ${String(e)}\n`); }
     const preview = this.createPreview(side, root, main, build, pdf);
     if (side === 'before') this.before = preview; else this.after = preview;
     await preview.start(); preview.showPage(this.page);
@@ -346,7 +349,7 @@ export class Paper {
     const build = side === 'before' ? this.beforeBuild : this.afterBuild, preview = side === 'before' ? this.before : this.after;
     if (!build) return; preview?.buildPending(true); await this.buildNow(build); preview?.buildPending(false); preview?.rescan();
     if (side === 'before' && !this.task) this.scheduleAnchors();
-    if (notify) vscode.window.setStatusBarMessage('论文与参考文献已构建。', 5000);
+    if (notify) vscode.window.setStatusBarMessage('Paper and bibliography built.', 5000);
   }
   private watchProposal() {
     this.proposalWatcher?.dispose(); if (!this.task || this.task.mode === 'workspace') return;
@@ -409,7 +412,7 @@ export class Paper {
   async showLocalHistory(point: HistoryPoint, file: string) {
     const history = this.localHistory; if (!history?.head) return;
     const left = historyUri(this.root, history.main, history.head, point.id, 'before', file), right = historyUri(this.root, history.main, history.head, point.id, 'after', file);
-    await vscode.commands.executeCommand('vscode.diff', left, right, `本地历史 · ${file} · ${point.label}`, { viewColumn: this.sourceColumn(this.main), preview: true });
+    await vscode.commands.executeCommand('vscode.diff', left, right, `Local History · ${file} · ${displayHistoryLabel(point.label)}`, { viewColumn: this.sourceColumn(this.main), preview: true });
   }
   private async refreshAnchors() {
     if (this.anchoring || this.task && this.task.mode !== 'workspace' || this.busy || !this.before || this.disposed) return;
@@ -425,12 +428,12 @@ export class Paper {
         try { await fs.access(file); } catch { note.anchorStatus = 'orphaned'; continue; }
         try {
           let point: PagePoint | undefined;
-          try { point = await this.before.position(path.join(this.root, note.source.file), note.source.line); } catch (e) { this.log(`批注源码定位：${String(e)}\n`); }
+          try { point = await this.before.position(path.join(this.root, note.source.file), note.source.line); } catch (e) { this.log(`Annotation source location: ${String(e)}\n`); }
           const location = await locateAnnotation(note, point, this.before.snapshot().pages, readPage);
           if (generation !== this.sourceGeneration) break;
           if (location) { note.page = location.page; note.rects = location.rects; if (note.anchorStatus === 'orphaned') note.anchorStatus = 'anchored'; }
           else note.anchorStatus = 'orphaned';
-        } catch (e) { this.log(`批注追踪：${String(e)}\n`); }
+        } catch (e) { this.log(`Annotation tracking: ${String(e)}\n`); }
       }
       if (this.notes.length) await this.saveNotes();
     } finally { this.anchoring = false; if (generation !== this.sourceGeneration) this.scheduleAnchors(); }
@@ -442,8 +445,8 @@ export class Paper {
       if (!note.source) continue; const file = path.resolve(this.root, note.source.file); if (!inside(this.root, file)) continue;
       const line = Math.max(0, note.source.line - 1), body = new vscode.MarkdownString().appendText(note.comment);
       if (note.quote) body.appendMarkdown('\n\n').appendText(`“${note.quote}”`);
-      const thread = this.comments.createCommentThread(vscode.Uri.file(file), new vscode.Range(line, 0, line, 0), [{ body, mode: vscode.CommentMode.Preview, author: { name: `PDF 第 ${note.page + 1} 页` } }]);
-      thread.label = 'PDF 论文批注'; thread.canReply = false; thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed; this.threads.push(thread);
+      const thread = this.comments.createCommentThread(vscode.Uri.file(file), new vscode.Range(line, 0, line, 0), [{ body, mode: vscode.CommentMode.Preview, author: { name: `PDF Page ${note.page + 1}` } }]);
+      thread.label = 'PDF Annotations'; thread.canReply = false; thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed; this.threads.push(thread);
     }
   }
   private async saveNotes() {
@@ -455,14 +458,14 @@ export class Paper {
     return this.noteWrites;
   }
   private async annotate(m: { header: FrameHeader; rects: number[][]; quote: string; comment: string; draftId: string; session: number; kind?: string; runAfterSave?: boolean }, side: 'before' | 'after') {
-    if (typeof m.quote !== 'string' || m.quote.length > 50000 || !Array.isArray(m.rects) || !m.rects.length || m.rects.length > 500 || !m.rects.every(r => Array.isArray(r) && r.length === 4 && r.every(Number.isFinite) && r[2] > r[0] && r[3] > r[1])) throw new Error('批注位置无效。');
-    if (typeof m.comment !== 'string' || !m.comment.trim() || m.comment.length > 20000) throw new Error('请在右侧填写批注，最多 20000 字符。');
+    if (typeof m.quote !== 'string' || m.quote.length > 50000 || !Array.isArray(m.rects) || !m.rects.length || m.rects.length > 500 || !m.rects.every(r => Array.isArray(r) && r.length === 4 && r.every(Number.isFinite) && r[2] > r[0] && r[3] > r[1])) throw new Error('Invalid annotation geometry.');
+    if (typeof m.comment !== 'string' || !m.comment.trim() || m.comment.length > 20000) throw new Error('Enter an annotation of up to 20,000 characters.');
     const preview = side === 'before' ? this.before : this.after;
-    if (!preview || !m.header || m.session !== this.previewSessions[side]) throw new Error('页面已改变，请重新选择这段内容。');
+    if (!preview || !m.header || m.session !== this.previewSessions[side]) throw new Error('The page has changed. Select this passage again.');
     const current = await preview.activatePage(m.header.page);
     const samePage = JSON.stringify(m.header.characters) === JSON.stringify(current.characters);
     const matched = m.kind === 'region' ? undefined : quoteGeometry(current, m.quote, m.rects[0]);
-    if (m.header.sequence !== current.sequence && !samePage && !matched) throw new Error('选中的段落已改变，请保留批注文字并重新选择原文。');
+    if (m.header.sequence !== current.sequence && !samePage && !matched) throw new Error('The selected passage has changed. Keep the annotation text and select the source passage again.');
     const rects = matched || m.rects;
     m.rects = rects;
     let source: Note['source']; try { source = await preview.source(current, m.rects, m.quote); } catch (e) { this.log(String(e)); }
@@ -477,14 +480,14 @@ export class Paper {
         source.line = first.line + 1; source.endLine = last.length ? Math.max(source.line, last.line + 1) : source.line;
         source.text = text.split(/\r?\n/).slice(Math.max(0, source.line - 3), source.endLine + 2).join('\n');
       }
-    } catch (e) { this.log(`批注源码校验：${String(e)}\n`); }
+    } catch (e) { this.log(`Annotation source validation: ${String(e)}\n`); }
     const rectangle = [Math.min(...m.rects.map(r => r[0])), Math.min(...m.rects.map(r => r[1])), Math.max(...m.rects.map(r => r[2])), Math.max(...m.rects.map(r => r[3]))];
     const image = await preview.capture(m.header.page, rectangle);
     const note: Note = { id: randomUUID(), number: Math.max(0, ...this.notes.map((note, index) => note.number || index + 1)) + 1, page: m.header.page, quote: m.quote.trim(), comment: m.comment.trim(), rects: m.rects, source, anchorStatus: 'anchored', proposalTask: side === 'after' ? this.task?.id : undefined };
     if (source && m.kind === 'region') try {
       const point = await preview.position(path.join(preview.root, source.file), source.line);
       note.region = { dx: rectangle[0] - point.x, dy: rectangle[1] - point.y, width: rectangle[2] - rectangle[0], height: rectangle[3] - rectangle[1] };
-    } catch (e) { this.log(`选区锚点：${String(e)}\n`); }
+    } catch (e) { this.log(`Selection anchor: ${String(e)}\n`); }
     if (source) {
       const sourceRoot = side === 'after' && this.task ? this.task.proposal : this.task?.mode === 'workspace' ? this.root : this.task?.baseline || this.root;
       try { const file = path.join(sourceRoot, source.file), text = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === file)?.getText() ?? await fs.readFile(file, 'utf8'); source.anchor = text.split(/\r?\n/).slice(source.line - 1, source.endLine || source.line).join('\n'); if (!this.task || this.task.mode === 'workspace') this.versions.set(source.file, text); else if (side === 'after') this.proposalVersions.set(source.file, text); } catch {}
@@ -498,19 +501,19 @@ export class Paper {
     const note = this.notes.find(note => note.id === id); if (!note) return;
     const conversation = this.conversation.value;
     if ([...(conversation.activeTurn ? [conversation.activeTurn] : []), ...conversation.queue].some(turn => turn.notes.some(sent => sent.id === id && sent.comment === note.comment))) return;
-    this.showChat(true); await this.sendChat('', conversation.agent, [id], conversation.runOptions);
+    await this.showChatForAction(true); await this.sendChat('', conversation.agent, [id], conversation.runOptions);
   }
-  selectNote(id: string, checked: boolean) { checked ? this.selectedNotes.add(id) : this.selectedNotes.delete(id); if (checked && !this.chatPanel) this.showChat(true); this.conversation.value.selectedNotes = [...this.selectedNotes]; void this.saveConversation().catch(this.ui.report); this.ui.refresh(); }
+  selectNote(id: string, checked: boolean) { checked ? this.selectedNotes.add(id) : this.selectedNotes.delete(id); if (checked && !this.chatPanel) void this.showChatForAction(true).catch(this.ui.report); this.conversation.value.selectedNotes = [...this.selectedNotes]; void this.saveConversation().catch(this.ui.report); this.ui.refresh(); }
   selectReviewEdits(id: string, selected: boolean, wholeFile = false) {
     const edits = (wholeFile ? this.review?.files.find(file => file.file === id)?.edits : this.review?.files.flatMap(file => file.edits).filter(edit => edit.id === id)) || [];
     for (const edit of edits) if (edit.decision !== 'accepted') { if (selected) this.selectedEdits.add(edit.id); else this.selectedEdits.delete(edit.id); }
     this.conversation.value.selectedEdits = [...this.selectedEdits]; void this.conversation.save().catch(this.ui.report); this.ui.refresh();
   }
   async acceptSelectedEdits() {
-    const ids = [...this.selectedEdits]; if (!ids.length) throw new Error('请先选择要接受的修改。');
+    const ids = [...this.selectedEdits]; if (!ids.length) throw new Error('Select the changes to accept first.');
     const accepted: string[] = [];
     try { for (const id of ids) { await this.setDecision(id, 'accepted', false, false); accepted.push(id); } }
-    finally { if (accepted.length) await this.recordAcceptance(accepted, `接受所选修改 · ${accepted.length} 处`); }
+    finally { if (accepted.length) await this.recordAcceptance(accepted, `Accepted Changes · ${accepted.length} `); }
   }
   private async recordAcceptance(ids: string[], label: string) {
     const files = this.review?.files.filter(file => file.edits.some(edit => ids.includes(edit.id) && edit.decision === 'accepted')) || [];
@@ -523,13 +526,17 @@ export class Paper {
   }
   sendSelectedNotes() {
     const ids = [...this.selectedNotes].filter(id => this.notes.some(note => note.id === id));
-    if (!ids.length) throw new Error('请先勾选要发送的批注。');
-    this.pendingNoteSend = ids; this.showChat(); this.flushNoteSend();
+    if (!ids.length) throw new Error('Select the annotations to send first.');
+    this.pendingNoteSend = ids; void this.showChatForAction().then(() => this.flushChatActions()).catch(this.ui.report);
   }
-  private flushNoteSend() { if (this.chatReady && this.pendingNoteSend) { this.post(this.chatPanel, { type: 'sendSelectedNotes', ids: this.pendingNoteSend }); this.pendingNoteSend = undefined; } }
+  private flushChatActions() {
+    if (!this.chatReady) return;
+    if (this.pendingChatFocus) { this.post(this.chatPanel, { type: 'focusChat', ...this.pendingChatFocus }); this.pendingChatFocus = undefined; }
+    if (this.pendingNoteSend) { this.post(this.chatPanel, { type: 'sendSelectedNotes', ids: this.pendingNoteSend }); this.pendingNoteSend = undefined; }
+  }
   async notePopup(id: string) {
     const note = this.notes.find(n => n.id === id); if (!note) return;
-    const action = await vscode.window.showQuickPick([{ label: '$(send) 发送任务', value: 'run' }, { label: '$(edit) 编辑批注', value: 'edit' }, { label: '$(go-to-file) 查看对应源码', value: 'source' }, { label: '$(trash) 删除批注', value: 'delete' }], { title: note.comment, ignoreFocusOut: true });
+    const action = await vscode.window.showQuickPick([{ label: '$(send) Send Task', value: 'run' }, { label: '$(edit) Edit Annotation', value: 'edit' }, { label: '$(go-to-file) Go to Source', value: 'source' }, { label: '$(trash) Delete Annotation', value: 'delete' }], { title: note.comment, ignoreFocusOut: true });
     if (action?.value === 'run') await this.sendNote(note.id); else if (action?.value === 'edit') await this.editNote(id); else if (action?.value === 'source') await this.showSource(note); else if (action?.value === 'delete') await this.deleteNote(id);
   }
   async editNote(id: string) {
@@ -537,7 +544,7 @@ export class Paper {
     await this.revealNote(note); this.post(this.panelFor(note.proposalTask ? 'after' : 'before'), { type: 'editNote', id });
   }
   private async updateNote(id: string, comment: unknown) {
-    const note = this.notes.find(n => n.id === id); if (!note || typeof comment !== 'string' || !comment.trim() || comment.length > 20000) throw new Error('请输入有效的批注内容。');
+    const note = this.notes.find(n => n.id === id); if (!note || typeof comment !== 'string' || !comment.trim() || comment.length > 20000) throw new Error('Enter valid annotation text.');
     note.comment = comment.trim(); note.status = 'open'; await this.saveNotes(); this.both({ type: 'noteEdited', id });
   }
   async deleteNote(id: string) { this.notes = this.notes.filter(n => n.id !== id); this.selectedNotes.delete(id); this.conversation.value.selectedNotes = [...this.selectedNotes]; await this.saveNotes(); await this.saveConversation(); }
@@ -545,14 +552,14 @@ export class Paper {
   async revealSource(file: string, line: number) {
     const proposal = !!this.task && this.task.mode !== 'workspace' && inside(this.task.proposal, file);
     const preview = proposal ? this.after : this.before;
-    if (!preview) throw new Error('PDF 预览正在准备，请稍后重试。');
+    if (!preview) throw new Error('The PDF preview is starting. Please retry shortly.');
     let target = file;
     if (this.task && this.task.mode !== 'workspace' && !proposal && inside(this.root, file)) {
       target = path.join(this.task.baseline, path.relative(this.root, file));
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
       line = mapLine(document.getText(), await fs.readFile(target, 'utf8'), line).line;
     }
-    if (!inside(preview.root, target)) throw new Error('此源码不属于当前论文。');
+    if (!inside(preview.root, target)) throw new Error('This source file does not belong to the current paper.');
     const point = await preview.position(target, line), frame = await preview.readPage(point.page);
     if (proposal) this.showProposal(); else this.showManuscript();
     this.page = point.page; preview.showPage(point.page);
@@ -586,14 +593,14 @@ export class Paper {
   private agentProfile(id: string): AgentProfile { return this.agentProfiles().find(profile => profile.id === id) || this.agentProfiles()[0]; }
   private async loadModels() { this.catalogs = Object.fromEntries(await Promise.all(this.agentProfiles().map(async profile => [profile.id, await modelCatalog(profile)]))); }
   private async chooseModel() {
-    const model = await vscode.window.showInputBox({ title: '模型名称', prompt: '填写本地 CLI 支持的模型名称或别名', value: this.conversation.value.runOptions?.model || '' });
+    const model = await vscode.window.showInputBox({ title: 'Model Name', prompt: 'Enter a model name or alias supported by the local CLI', value: this.conversation.value.runOptions?.model || '' });
     if (model === undefined) return;
     this.conversation.value.runOptions = runOptions({ ...this.conversation.value.runOptions, model }, this.agentProfile(this.conversation.value.agent).type); await this.saveConversation();
   }
   async addClaudeAgent() {
-    const name = await vscode.window.showInputBox({ title: '新增 Claude 代理', prompt: '代理显示名称', placeHolder: '例如 uclaude', validateInput: value => !value.trim() ? '请输入名称' : this.agentProfiles().some(profile => profile.name.toLowerCase() === value.trim().toLowerCase()) ? '该名称已存在' : undefined });
+    const name = await vscode.window.showInputBox({ title: 'Add Claude Agent', prompt: 'Agent display name', placeHolder: 'For example, uclaude', validateInput: value => !value.trim() ? 'Enter a name' : this.agentProfiles().some(profile => profile.name.toLowerCase() === value.trim().toLowerCase()) ? 'This name already exists' : undefined });
     if (!name) return;
-    const directory = await vscode.window.showInputBox({ title: `配置 ${name.trim()}`, prompt: 'claude_config_dir：该代理的 Claude 配置目录', placeHolder: '例如 ~/.claude-uni', validateInput: value => value.trim() ? undefined : '请输入配置目录' });
+    const directory = await vscode.window.showInputBox({ title: `Configure ${name.trim()}`, prompt: 'claude_config_dir: the Claude configuration directory for this agent', placeHolder: 'For example, ~/.claude-uni', validateInput: value => value.trim() ? undefined : 'Enter a configuration directory' });
     if (!directory) return;
     const config = vscode.workspace.getConfiguration('pdfLocal'), agents = config.get<CustomAgent[]>('agents', []);
     await config.update('agents', [...agents, { name: name.trim(), type: 'claude', claude_config_dir: directory.trim() }], vscode.ConfigurationTarget.Global);
@@ -603,16 +610,16 @@ export class Paper {
   }
   private async saveConversation() { this.both({ type: 'chatState', ...this.chatState() }); await this.conversation.save(); }
   private async sendChat(instruction: unknown, agent: unknown, ids: unknown, options?: unknown) {
-    if (typeof instruction !== 'string' || instruction.length > 50000 || !Array.isArray(ids) || !ids.every(id => typeof id === 'string') || !this.agentProfiles().some(profile => profile.id === agent)) throw new Error('任务内容无效。');
+    if (typeof instruction !== 'string' || instruction.length > 50000 || !Array.isArray(ids) || !ids.every(id => typeof id === 'string') || !this.agentProfiles().some(profile => profile.id === agent)) throw new Error('Invalid task content.');
     const conversation = this.conversation.value, chosen = agent as Agent;
-    if (this.chatState().lockedAgent && chosen !== conversation.agent) throw new Error('当前会话的代理已固定。请新建会话后切换代理。');
+    if (this.chatState().lockedAgent && chosen !== conversation.agent) throw new Error('The agent is bound to this conversation. Start a new session to switch agents.');
     const notes = [...new Set(ids)].map(id => this.notes.find(note => note.id === id)).filter((note): note is Note => !!note);
-    if (!instruction.trim() && !notes.length) throw new Error('请填写总体要求，或先把 PDF 批注加入待发送队列。');
+    if (!instruction.trim() && !notes.length) throw new Error('Enter a revision request or select PDF annotations to send.');
     conversation.agent = chosen; conversation.agentProfile ??= structuredClone(this.agentProfile(chosen)); await this.context.workspaceState.update('lastAgent', chosen);
     const selectedOptions = runOptions(options, this.agentProfile(chosen).type); conversation.runOptions = selectedOptions;
     const turn: QueuedTurn = { id: randomUUID(), assistantId: randomUUID(), agent: chosen, instruction: instruction.trim(), notes: structuredClone(notes), options: structuredClone(selectedOptions) };
     conversation.queue.push(turn);
-    conversation.messages.push({ id: turn.id, role: 'user', text: turn.instruction || '按这些 PDF 批注修改论文。', notes: notes.map(n => ({ id: n.id, page: n.page, comment: n.comment })), status: 'queued' });
+    conversation.messages.push({ id: turn.id, role: 'user', text: turn.instruction || 'Revise the paper using these PDF annotations.', notes: notes.map(n => ({ id: n.id, page: n.page, comment: n.comment })), status: 'queued' });
     for (const note of notes) this.selectedNotes.delete(note.id); conversation.selectedNotes = [...this.selectedNotes];
     if (conversation.draft === instruction) conversation.draft = '';
     this.both({ type: 'chatSent', instruction }); await this.saveConversation(); this.ui.refresh(); this.startQueue();
@@ -642,7 +649,7 @@ export class Paper {
               void this.conversation.save().catch(e => this.log(String(e)));
             }, 100);
           }, turn.options, turn.id);
-          response.status = 'completed'; if (!response.text) response.text = '本轮任务已完成，可在 PDF 上审阅修改。'; if (user) user.status = 'completed';
+          response.status = 'completed'; if (!response.text) response.text = 'This task is complete. Review its changes in the PDF.'; if (user) user.status = 'completed';
         } catch (e) {
           response.status = 'failed'; response.text += `\n${e instanceof Error ? e.message : String(e)}`; if (user) user.status = 'failed'; conversation.paused = true;
         }
@@ -652,10 +659,10 @@ export class Paper {
     } finally { this.processingQueue = false; this.ui.refresh(); await this.saveConversation(); }
   }
   private newSessionBlock() {
-    if (this.queueActive) return '代理仍在执行任务，请等待完成或停止当前任务后再新建会话。';
-    if (this.conversation.value.queue.length) return '还有排队任务，请先执行或移除这些任务。';
-    if (this.selectedNotes.size) return '还有待发送批注，请先发送或移除这些批注。';
-    if (this.task && (!this.review || this.review.files.some(file => file.edits.some(edit => edit.decision === 'pending')))) return '仍有待审阅的修改，请先接受、拒绝，或结束本次审阅后再新建会话。';
+    if (this.queueActive) return 'The agent is still running. Wait for completion or stop it before starting a new session.';
+    if (this.conversation.value.queue.length) return 'There are queued tasks. Run or remove them before starting a new session.';
+    if (this.selectedNotes.size) return 'There are annotations waiting to be sent. Send or remove them before starting a new session.';
+    if (this.task && (!this.review || this.review.files.some(file => file.edits.some(edit => edit.decision === 'pending')))) return 'There are changes pending review. Accept, reject, or end the review before starting a new session.';
     return '';
   }
   async newSession() {
@@ -667,31 +674,47 @@ export class Paper {
   }
   async revise(specific?: Note[], extra = '') {
     for (const note of specific || []) this.selectedNotes.add(note.id);
-    if (extra) this.conversation.value.draft = extra;
+    if (extra && !this.conversation.value.draft.startsWith(extra)) this.conversation.value.draft = extra + this.conversation.value.draft;
+    this.pendingChatFocus = extra ? { draft: this.conversation.value.draft } : {};
     this.conversation.value.selectedNotes = [...this.selectedNotes]; await this.saveConversation();
-    this.showChat(); this.post(this.chatPanel, { type: 'focusChat' });
+    await this.showChatForAction(); this.flushChatActions();
+  }
+  private async showChatForAction(preserveFocus = false) {
+    if (this.chatPanel) { this.showChat(preserveFocus); return; }
+    if (this.openingChat) return this.openingChat;
+    this.openingChat = (async () => {
+      const column = this.panel.viewColumn;
+      if (column && vscode.window.tabGroups.all.some(group => group.viewColumn === column + 1)) {
+        this.panel.reveal(undefined, false);
+        await vscode.commands.executeCommand('workbench.action.newGroupRight');
+      }
+      if (this.disposed) return;
+      this.showChat(preserveFocus);
+      if (preserveFocus) this.panel.reveal(undefined, false);
+    })().finally(() => { this.openingChat = undefined; });
+    return this.openingChat;
   }
   private showChat(preserveFocus = false) {
     if (this.chatPanel) { this.chatPanel.reveal(undefined, preserveFocus); return; }
-    this.chatPanel = this.createPanel('chat', this.panel.viewColumn ? this.panel.viewColumn + 1 : vscode.ViewColumn.Beside, undefined, preserveFocus);
-    this.chatPanel.onDidDispose(() => { this.chatPanel = undefined; this.chatReady = false; });
+    const panel = this.chatPanel = this.createPanel('chat', this.panel.viewColumn ? this.panel.viewColumn + 1 : vscode.ViewColumn.Beside, undefined, preserveFocus);
+    panel.onDidDispose(() => { if (this.chatPanel === panel) { this.chatPanel = undefined; this.chatReady = false; } });
   }
   private async executeTurn(chosen: Agent, selected: Note[], instruction: string, assistant: (update: AgentUpdate) => void, options: RunOptions = {}, requestId: string = randomUUID()) {
     const profile = this.agentProfile(chosen), agent = { value: chosen, label: profile.name };
     this.busy = true; this.ui.refresh();
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `${agent.label} · ${this.task?.sessions?.[agent.value] ? '继续会话' : '修改论文 PDF 批注'}` }, async (progress, token) => {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `${agent.label} · ${this.task?.sessions?.[agent.value] ? 'Continue Session' : 'Revise Paper'}` }, async (progress, token) => {
       let request: ReviewRequest | undefined;
       let succeeded = false;
       const cancellation = token.onCancellationRequested(() => { this.conversation.value.paused = true; void this.saveConversation(); void this.run?.stop(); });
       try {
-        for (const doc of vscode.workspace.textDocuments) if (doc.isDirty && doc.uri.scheme === 'file' && inside(this.root, doc.uri.fsPath) && !inside(path.join(this.root, '.pdf-local-copilot'), doc.uri.fsPath) && !await doc.save()) throw new Error(`请先保存 ${doc.fileName}`);
+        for (const doc of vscode.workspace.textDocuments) if (doc.isDirty && doc.uri.scheme === 'file' && inside(this.root, doc.uri.fsPath) && !inside(path.join(this.root, '.pdf-local-copilot'), doc.uri.fsPath) && !await doc.save()) throw new Error(`Save ${doc.fileName} first`);
         if (this.task?.mode === 'workspace') {
           const decisions = this.review?.files.flatMap(file => file.edits.filter(edit => edit.decision !== 'pending').map(edit => `${edit.decision}: ${file.file}:${edit.beforeLine} ${JSON.stringify(edit.removed)} -> ${JSON.stringify(edit.inserted)}`)).join('\n');
-          if (decisions) this.conversation.value.contextUpdates.push(`上一轮审阅决定：\n${decisions}`);
+          if (decisions) this.conversation.value.contextUpdates.push(`Previous review decisions: \n${decisions}`);
           await this.finishTask(true);
         }
         if (!this.task) {
-          progress.report({ message: '记录工作稿状态…' });
+          progress.report({ message: 'Recording the working draft…' });
           this.workingTree = await WorkingTree.create(this.root, this.main, this.conversation.value.task?.sessions);
           this.task = this.workingTree.task; this.conversation.value.task = this.task;
           await this.saveConversation(); await this.context.workspaceState.update(this.key, this.task);
@@ -703,48 +726,48 @@ export class Paper {
           request.anchors.push({ noteId: note.id, file: note.source.file, line: original ? mapLine(current, original.toString('utf8'), note.source.line).line : note.source.line, endLine: original ? mapLine(current, original.toString('utf8'), note.source.endLine || note.source.line).line : note.source.endLine || note.source.line });
         }
         this.review ??= { version: 1, files: [] }; this.review.requests ??= []; this.review.requests.push(request); await saveReview(this.task, this.review);
-        if (token.isCancellationRequested || this.conversation.value.paused || this.disposed) throw new Error('当前任务已取消，队列已暂停。');
+        if (token.isCancellationRequested || this.conversation.value.paused || this.disposed) throw new Error('The task was cancelled and the queue is paused.');
         const images: string[] = []; let imageBytes = 0;
         for (const note of selected) if (note.image) {
-          const source = path.resolve(this.root, note.image); if (!inside(this.root, source)) throw new Error('图片路径不属于当前论文。');
+          const source = path.resolve(this.root, note.image); if (!inside(this.root, source)) throw new Error('The image path is outside the current paper project.');
           const bytes = await fs.readFile(source); imageBytes += bytes.length;
-          if (imageBytes > 6 * 1024 * 1024) throw new Error('所选 PDF 截图超过 6 MiB，请分成几轮批注发送。');
+          if (imageBytes > 6 * 1024 * 1024) throw new Error('The selected PDF screenshots exceed 6 MiB. Send the annotations in smaller batches.');
           const target = path.join(this.task.dir, 'images', note.id + '.png'); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, bytes); images.push(target);
         }
         this.showProposal(true); this.both({ type: 'hasTask', value: true }); this.ui.refresh();
         const feedback = this.review?.files.flatMap(f => f.edits.filter(e => e.decision !== 'pending').map(e => `${e.decision}: ${f.file}:${e.beforeLine} ${JSON.stringify(e.removed)} -> ${JSON.stringify(e.inserted)}`)).join('\n') || '';
         this.log(`\n=== ${agent.label} · ${this.task.id} · ${images.length} images ===\n`);
         this.run = runAgent(agent.value, profile.command, this.task, selected, `${instruction}\n\nCurrent manuscript updates:\n${this.conversation.value.contextUpdates.join('\n')}\n\nAuthor's prior review decisions:\n${feedback}`, s => this.log(s), images, assistant, profile, options);
-        progress.report({ message: '正在读取 PDF 批注、选区图片并修改源文件。' }); await this.run.done; succeeded = true;
+        progress.report({ message: 'Reading annotations and screenshots, and editing source files.' }); await this.run.done; succeeded = true;
         this.conversation.value.task = this.task; this.conversation.value.contextUpdates = []; await this.saveConversation();
         await this.context.workspaceState.update(this.key, this.task);
-        clearTimeout(this.buildTimers.get(this.task?.mode === 'workspace' ? 'before' : 'after')); progress.report({ message: '更新参考文献、PDF 和逐处审阅标记…' });
-        try { await this.rebuild(this.task?.mode === 'workspace' ? 'before' : 'after', false); } catch (e) { this.log(`本轮构建未通过：${String(e)}\n`); }
+        clearTimeout(this.buildTimers.get(this.task?.mode === 'workspace' ? 'before' : 'after')); progress.report({ message: 'Updating the bibliography, PDF, and review markers…' });
+        try { await this.rebuild(this.task?.mode === 'workspace' ? 'before' : 'after', false); } catch (e) { this.log(`This round did not build successfully: ${String(e)}\n`); }
       } finally {
         cancellation.dispose(); this.run = undefined; this.busy = false;
         if (!this.disposed) { this.before?.rescan(); await this.workingTree?.capture(); await this.refreshReview(true, request); if (succeeded && request) await this.hideProcessedNotes([request]); await this.refreshAnchors(); this.ui.refresh(); }
       }
     });
-    if (!this.disposed) vscode.window.setStatusBarMessage('修改完成。点击 PDF 中的编号标记，逐处审阅。', 5000);
+    if (!this.disposed) vscode.window.setStatusBarMessage('Changes are ready. Click numbered PDF markers to review them.', 5000);
   }
   async stopAgent() { this.conversation.value.paused = true; await this.saveConversation(); await this.run?.stop(); }
   showManuscript(preserveFocus = false) {
     this.proposalPanel?.dispose(); this.proposalPanel = undefined; this.mainViewSide = 'before'; this.currentSide = 'before';
-    this.panel.title = `论文 · ${path.basename(this.main)}`; this.syncPanel(this.panel, 'before'); this.panel.reveal(undefined, preserveFocus);
+    this.panel.title = `Paper · ${path.basename(this.main)}`; this.syncPanel(this.panel, 'before'); this.panel.reveal(undefined, preserveFocus);
   }
   showProposal(preserveFocus = false) {
     if (!this.task) return;
     if (this.task.mode === 'workspace') { this.showManuscript(preserveFocus); return; }
     this.proposalPanel?.dispose(); this.proposalPanel = undefined; this.mainViewSide = 'after'; this.currentSide = 'after';
-    this.panel.title = `修改稿 · ${path.basename(this.main)}`; this.syncPanel(this.panel, 'after'); this.panel.reveal(undefined, preserveFocus);
+    this.panel.title = `Working Draft · ${path.basename(this.main)}`; this.syncPanel(this.panel, 'after'); this.panel.reveal(undefined, preserveFocus);
   }
   async compare() {
     if (this.task?.mode === 'workspace') {
       const file = this.review?.files.find(file => file.file === this.task?.main) || this.review?.files[0];
-      if (file) await this.diff(file.file); else vscode.window.setStatusBarMessage('当前工作稿没有待审阅的修改。', 4000);
+      if (file) await this.diff(file.file); else vscode.window.setStatusBarMessage('The current working draft has no changes pending review.', 4000);
       return;
     }
-    if (!this.task) return; this.mainViewSide = 'before'; this.currentSide = 'before'; this.panel.title = `原稿 · ${path.basename(this.main)}`; this.panel.reveal();
+    if (!this.task) return; this.mainViewSide = 'before'; this.currentSide = 'before'; this.panel.title = `Original · ${path.basename(this.main)}`; this.panel.reveal();
     if (!this.proposalPanel) { this.proposalPanel = this.createPanel('after', vscode.ViewColumn.Beside); this.proposalPanel.onDidDispose(() => { this.proposalPanel = undefined; }); }
     else this.proposalPanel.reveal(vscode.ViewColumn.Beside);
     this.syncPanel(this.panel, 'before'); this.syncPanel(this.proposalPanel, 'after');
@@ -791,7 +814,7 @@ export class Paper {
       const headers: FrameHeader[] = [];
       for (let page = 0; page < preview.snapshot().pages; page++) {
         if (this.disposed || this.review !== review || this.task !== task) return;
-        try { headers.push((await preview.readPage(page)).header); } catch (e) { this.log(`修改页面读取：${String(e)}\n`); }
+        try { headers.push((await preview.readPage(page)).header); } catch (e) { this.log(`Reading changed pages: ${String(e)}\n`); }
       }
       for (const file of files) {
         const original = side === 'before' && task.mode !== 'workspace';
@@ -801,7 +824,7 @@ export class Paper {
           const offset = original ? edit.start : editPosition(file, edit).offset;
           const length = original || edit.decision === 'rejected' ? edit.removed.length : edit.inserted.length;
           const notes = review.requests?.find(request => request.id === edit.requestId)?.notes.filter(note => edit.noteIds?.includes(note.id)) || [];
-          const originLabel = notes.length ? notes.map(note => `批注 ${note.number || ''}`).join('、') : edit.origin === 'annotation' ? '本轮批注' : edit.origin === 'session' ? '来自会话' : '来自编辑器';
+          const originLabel = notes.length ? notes.map(note => `Annotation ${note.number || ''}`).join(', ') : edit.origin === 'annotation' ? 'Annotations' : edit.origin === 'session' ? 'From Conversation' : 'From Editor';
           const ranges = locate(offset, length), common = { id: edit.id, decision: edit.decision, label: `${file.file}:${edit.beforeLine}`, originLabel };
           if (ranges.length) for (const range of ranges) markers[side].push({ ...common, ...range });
           else markers[side].push({ ...common, page: 0, rects: [[22, 18 + markers[side].filter(marker => marker.unresolved).length * 18, 44, 33 + markers[side].filter(marker => marker.unresolved).length * 18]], unresolved: true });
@@ -815,11 +838,11 @@ export class Paper {
     const next = this.decisions.catch(() => {}).then(() => this.changeDecision(id, decision, wholeFile, recordHistory)); this.decisions = next; return next;
   }
   private async changeDecision(id: string, decision: Decision, wholeFile: boolean, recordHistory: boolean) {
-    if (this.queueActive || !this.task || !this.review) throw new Error('请等待当前队列完成或暂停后再审阅。');
+    if (this.queueActive || !this.task || !this.review) throw new Error('Wait for the queue to finish or pause it before reviewing.');
     const edits = wholeFile ? this.review.files.find(f => f.file === id)?.edits || [] : this.review.files.flatMap(f => f.edits).filter(e => e.id === id);
-    if (!edits.length) throw new Error('请在 PDF 上选择要审阅的修改。');
+    if (!edits.length) throw new Error('Select a PDF change to review.');
     const dirty = vscode.workspace.textDocuments.find(doc => doc.isDirty && doc.uri.scheme === 'file' && edits.some(edit => path.join(this.root, edit.file) === doc.uri.fsPath));
-    if (dirty) throw new Error(`请先保存 ${path.basename(dirty.fileName)} 的当前编辑，再刷新审阅。`);
+    if (dirty) throw new Error(`Save the current edits in ${path.basename(dirty.fileName)} before refreshing the review.`);
     const textChanges = edits.some(e => (e.decision === 'rejected') !== (decision === 'rejected'));
     for (const edit of edits) await decide(this.task, this.review, edit.id, decision);
     if (decision === 'accepted') for (const edit of edits) this.selectedEdits.delete(edit.id);
@@ -836,7 +859,7 @@ export class Paper {
     if (updated) { this.threads.forEach(thread => thread.dispose()); this.threads = []; await this.saveNotes(); this.conversation.value.selectedNotes = [...this.selectedNotes]; await this.saveConversation(); }
     this.ui.refresh(); this.both({ type: 'decisions', edits: this.review.files.flatMap(f => f.edits).map(e => ({ id: e.id, decision: e.decision })) });
     for (const side of ['before', 'after'] as const) for (const marker of this.markers[side]) if (edits.some(e => e.id === marker.id)) marker.decision = decision;
-    if (decision === 'accepted' && recordHistory) await this.recordAcceptance(edits.map(edit => edit.id), `接受修改 · ${edits[0].file}`);
+    if (decision === 'accepted' && recordHistory) await this.recordAcceptance(edits.map(edit => edit.id), `Accepted Change · ${edits[0].file}`);
     if (textChanges) { this.after?.rescan(); try { await this.rebuild(this.task?.mode === 'workspace' ? 'before' : 'after', false); } catch (e) { this.log(String(e)); } await this.paintMarkers(); }
   }
   async showEdit(id: string) {
@@ -857,7 +880,7 @@ export class Paper {
   }
   private showReviewCard(id: string, panel: vscode.WebviewPanel) {
     const file = this.review?.files.find(file => file.edits.some(edit => edit.id === id)), edit = file?.edits.find(edit => edit.id === id);
-    if (!file || !edit) return;
+    if (!file || !edit) throw new Error('This change is no longer available. Refresh Current Changes and select it again.');
     const request = this.review?.requests?.find(request => request.id === edit.requestId);
     const notes = request?.notes.filter(note => edit.noteIds?.includes(note.id)) || [];
     this.selectedEdit = id; this.both({ type: 'selectedEdit', id });
@@ -865,13 +888,13 @@ export class Paper {
   }
   private async followupReview(id: string) {
     const file = this.review?.files.find(file => file.edits.some(edit => edit.id === id)), edit = file?.edits.find(edit => edit.id === id);
-    if (!file || !edit) return;
+    if (!file || !edit) throw new Error('This change is no longer available. Refresh Current Changes and select it again.');
     const request = this.review?.requests?.find(request => request.id === edit.requestId);
     const related = request?.notes.filter(note => edit.noteIds?.includes(note.id)) || [];
     for (const note of related) if (!this.notes.some(item => item.id === note.id)) this.notes.push({ ...structuredClone(note), status: 'resolved' });
     if (related.length) await this.saveNotes();
-    const context = related.length ? related.map(note => `批注 ${note.number || ''}：${note.comment}`).join('\n') : request?.instruction || `${file.file}:${edit.beforeLine} 的修改`;
-    await this.revise(related, `关于${context}\n\n继续提问：`);
+    const context = related.length ? related.map(note => `Annotation ${note.number || ''}: ${note.comment}`).join('\n') : request?.instruction || `${file.file}:${edit.beforeLine} changes`;
+    await this.revise(related, `Regarding ${context}\n\nFollow Up: `);
   }
   async nextEdit(direction: number) {
     const edits = this.review?.files.flatMap(f => f.edits).filter(edit => edit.decision !== 'accepted') || []; if (!edits.length) return;
@@ -882,10 +905,10 @@ export class Paper {
     const file = this.review?.files.find(f => f.edits.some(e => e.id === id)), edit = file?.edits.find(e => e.id === id);
     if (!file || !edit) return; this.selectedEdit = edit.id;
     const action = await vscode.window.showQuickPick([
-      { label: '$(check) 接受此处修改', value: 'accepted' }, { label: '$(discard) 拒绝此处修改', value: 'rejected' },
-      { label: '$(comment) 继续提问', value: 'comment' }, { label: '$(circle-outline) 恢复为待审阅', value: 'pending' },
-      { label: '$(diff) 查看源码差异', value: 'diff' }, { label: '$(check-all) 完成本轮审阅', value: 'apply' }
-    ], { title: `PDF 修改 · ${file.file}:${edit.beforeLine}`, placeHolder: `${edit.removed.slice(0, 100)} → ${edit.inserted.slice(0, 100)}`, ignoreFocusOut: false });
+      { label: '$(check) Accept Change', value: 'accepted' }, { label: '$(discard) Reject Change', value: 'rejected' },
+      { label: '$(comment) Follow Up', value: 'comment' }, { label: '$(circle-outline) Mark Pending', value: 'pending' },
+      { label: '$(diff) View Source Diff', value: 'diff' }, { label: '$(check-all) Finish Review', value: 'apply' }
+    ], { title: `PDF Change · ${file.file}:${edit.beforeLine}`, placeHolder: `${edit.removed.slice(0, 100)} → ${edit.inserted.slice(0, 100)}`, ignoreFocusOut: false });
     if (!action) return;
     if (['accepted', 'rejected', 'pending'].includes(action.value)) await this.setDecision(edit.id, action.value as Decision);
     else if (action.value === 'diff') await this.diff(file.file, edit.id);
@@ -899,7 +922,7 @@ export class Paper {
     source.showPage(this.page); this.post(this.panelFor(sourceSide), { type: 'navigate', page: this.page }); this.ui.refresh();
     try {
       const frame = await source.readPage(this.page), chars = frame.header.characters?.filter(c => c[0] > 32) || [];
-      const middle = chars[Math.floor(chars.length / 2)]; if (!middle) throw new Error('页面没有可定位文字。');
+      const middle = chars[Math.floor(chars.length / 2)]; if (!middle) throw new Error('This page has no locatable text.');
       const location = await source.source(frame.header, [middle.slice(1)], String.fromCodePoint(middle[0]));
       const fromRoot = sourceSide === 'before' ? this.task.baseline : this.task.proposal, toRoot = sourceSide === 'before' ? this.task.proposal : this.task.baseline;
       const [from, to] = await Promise.all([fs.readFile(path.join(fromRoot, location.file), 'utf8'), fs.readFile(path.join(toRoot, location.file), 'utf8')]);
@@ -909,10 +932,10 @@ export class Paper {
       this.post(this.panelFor(sourceSide === 'before' ? 'after' : 'before'), { type: 'navigate', page: point.page });
       const targetFrame = await target.readPage(point.page);
       this.both({ type: 'alignment', sourceSide, source: { page: frame.header.page, x: middle[1], y: middle[2], bounds: frame.header.bounds }, target: { ...point, bounds: targetFrame.header.bounds } });
-    } catch (e) { this.log(`跨页对齐暂不可用：${String(e)}\n`); if (generation === this.alignmentGeneration) { this.alignedPage = undefined; target.showPage(this.page); this.both({ type: 'alignmentUnavailable' }); } }
+    } catch (e) { this.log(`Cross-page alignment is temporarily unavailable: ${String(e)}\n`); if (generation === this.alignmentGeneration) { this.alignedPage = undefined; target.showPage(this.page); this.both({ type: 'alignmentUnavailable' }); } }
     this.ui.refresh();
   }
-  toggleRegion() { this.tool = this.tool === 'text' ? 'region' : 'text'; this.both({ type: 'tool', tool: this.tool }); void vscode.window.setStatusBarMessage(this.tool === 'region' ? 'PDF：拖动框选公式或图片以添加批注' : 'PDF：拖选文字以添加批注', 4000); }
+  toggleRegion() { this.tool = this.tool === 'text' ? 'region' : 'text'; this.both({ type: 'tool', tool: this.tool }); void vscode.window.setStatusBarMessage(this.tool === 'region' ? 'PDF: drag a region around an equation or figure to annotate it' : 'PDF: select text to add an annotation', 4000); }
   zoom(delta: number, fit = false) { this.zoomLevel = fit ? 1 : Math.min(3, Math.max(.5, this.zoomLevel + delta)); this.both({ type: 'zoom', zoom: this.zoomLevel }); }
   toggleDifference() { if (this.task?.mode === 'workspace') return this.compare(); this.difference = !this.difference; this.both({ type: 'difference', enabled: this.difference }); }
   async diff(file: string, id?: string) {
@@ -933,14 +956,14 @@ export class Paper {
     await this.decisions;
     if (this.queueActive || !this.task || !this.review) return;
     if (this.task.mode === 'workspace') {
-      if (this.dirtyProjectDocument()) throw new Error('请先保存当前编辑，再完成本轮审阅。');
-      if (this.review.files.some(file => file.edits.some(edit => edit.decision === 'pending'))) throw new Error('仍有待审阅的修改，请先接受或拒绝，再完成本轮审阅。');
+      if (this.dirtyProjectDocument()) throw new Error('Save your current edits before finishing the review.');
+      if (this.review.files.some(file => file.edits.some(edit => edit.decision === 'pending'))) throw new Error('There are changes pending review. Accept or reject them before finishing the review.');
       await this.finishTask(); return;
     }
-    const plan = reviewPlan(this.review, true); if (!plan.length) throw new Error('请先在 PDF 上接受至少一处修改。');
-    for (const doc of vscode.workspace.textDocuments) if (doc.isDirty && doc.uri.scheme === 'file' && plan.some(c => path.resolve(this.root, c.file) === doc.uri.fsPath)) throw new Error(`请先保存 ${doc.fileName} 的当前编辑，再应用并检查冲突。`);
+    const plan = reviewPlan(this.review, true); if (!plan.length) throw new Error('Accept at least one PDF change first.');
+    for (const doc of vscode.workspace.textDocuments) if (doc.isDirty && doc.uri.scheme === 'file' && plan.some(c => path.resolve(this.root, c.file) === doc.uri.fsPath)) throw new Error(`Save the current edits in ${doc.fileName} before applying changes and checking conflicts.`);
     this.busy = true; this.proposalWatcher?.dispose(); clearTimeout(this.buildTimers.get('after')); this.ui.refresh();
-    try { await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: '验证并应用已接受的 PDF 修改' }, async () => {
+    try { await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Validating and applying accepted PDF changes' }, async () => {
       // Compile exactly the accepted combination before changing the manuscript.
       const restore = new Map<string, Buffer | undefined>();
       try {
@@ -954,22 +977,22 @@ export class Paper {
         for (const [target, bytes] of restore) if (bytes) await fs.writeFile(target, bytes); else await fs.unlink(target).catch(() => {});
       }
       this.lastApplication = await applyWithUndo(this.root, plan, this.context.globalStorageUri.fsPath);
-      this.conversation.value.contextUpdates.push(`已将 ${plan.length} 个文件中接受的修改应用到原稿。`);
-      this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: `已应用 ${plan.length} 个文件的修改。后续任务继续使用当前会话。` }); await this.saveConversation();
+      this.conversation.value.contextUpdates.push(`Accepted changes in ${plan.length} files have been applied to the manuscript.`);
+      this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: `Changes to ${plan.length} files have been applied. Subsequent tasks continue in this session.` }); await this.saveConversation();
       await this.context.workspaceState.update(`undo:${this.root}`, this.lastApplication); await this.finishTask(true);
     }); } finally { this.busy = false; if (this.task) this.watchProposal(); else this.scheduleAnchors(); this.ui.refresh(); }
-    vscode.window.setStatusBarMessage(`已应用 ${plan.length} 个文件中的已接受修改。可运行“撤销上次应用”恢复。`, 5000);
+    vscode.window.setStatusBarMessage(`Applied accepted changes in ${plan.length} files. Use Undo Round to restore them.`, 5000);
   }
   async undo() {
-    if (this.queueActive) throw new Error('请先停止当前任务，再撤回本轮修改。');
-    if (this.dirtyProjectDocument()) throw new Error('请先保存当前编辑，再撤回本轮修改。');
-    if (this.task?.mode === 'workspace') { await this.workingTree?.capture(); if (!(await changes(this.task)).length) throw new Error('本轮没有需要撤回的修改。'); await this.finishTask(); }
-    if (this.task) throw new Error('请先结束当前任务，再撤销上次应用。');
+    if (this.queueActive) throw new Error('Stop the current task before undoing this round.');
+    if (this.dirtyProjectDocument()) throw new Error('Save your current edits before undoing this round.');
+    if (this.task?.mode === 'workspace') { await this.workingTree?.capture(); if (!(await changes(this.task)).length) throw new Error('This round has no changes to undo.'); await this.finishTask(); }
+    if (this.task) throw new Error('End the current task before undoing the last operation.');
     if (!this.lastApplication) return; await undoApplication(this.lastApplication, this.root);
     this.lastApplication = undefined; await this.context.workspaceState.update(`undo:${this.root}`, undefined);
-    this.conversation.value.contextUpdates.push('作者已撤销上次应用，原稿已恢复；请以当前文件为准。'); this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: '已撤销上次应用。当前会话与上下文继续保留。' }); await this.saveConversation();
+    this.conversation.value.contextUpdates.push('The author undid the last operation. The manuscript has been restored; use the current files.'); this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: 'The last operation was undone. The current conversation and context are retained.' }); await this.saveConversation();
     await this.reconcileOriginalNotes(); await this.rebuild('before', false); this.before?.rescan(); await this.refreshAnchors(); this.ui.refresh();
-    vscode.window.setStatusBarMessage('本轮应用已整批撤销，论文已恢复。', 5000);
+    vscode.window.setStatusBarMessage('This round has been undone and the paper restored.', 5000);
   }
   private async reconcileOriginalNotes() {
     const files = new Set(this.notes.flatMap(n => n.source ? [n.source.file] : []));
@@ -978,17 +1001,17 @@ export class Paper {
   }
   async finishTask(internal = false) {
     await this.decisions;
-    if (this.queueActive && !internal) throw new Error('请先暂停当前队列，再结束审阅。');
+    if (this.queueActive && !internal) throw new Error('Pause the current queue before ending the review.');
     if (this.task?.mode === 'workspace') {
-      if (this.dirtyProjectDocument()) throw new Error('请先保存当前编辑，再结束本轮审阅。');
+      if (this.dirtyProjectDocument()) throw new Error('Save your current edits before ending this review round.');
       await this.workingTree?.capture();
       const plan = await changes(this.task);
       if (plan.length) {
         this.lastApplication = await recordWorkspace(this.task, plan);
         await this.context.workspaceState.update(`undo:${this.root}`, this.lastApplication);
       }
-      this.conversation.value.contextUpdates.push('本轮审阅已结束，所有保留的修改已经写入真实项目文件。请继续读取当前文件。');
-      this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: `已完成本轮审阅；${plan.length} 个文件的修改保留在项目中，可整轮撤回。` });
+      this.conversation.value.contextUpdates.push('This review round has ended. All retained changes are in the live project files. Continue reading the current files.');
+      this.conversation.value.messages.push({ id: randomUUID(), role: 'system', text: `Review complete; changes in ${plan.length} files remain in the project and can be undone as a round.` });
       for (const group of vscode.window.tabGroups.all) {
         const tabs = group.tabs.filter(tab => tab.input instanceof vscode.TabInputTextDiff && tab.input.original.scheme === 'pdfLocal.reviewBase' && tab.input.original.path.startsWith(`/${this.task!.id}/`));
         if (!tabs.length) continue;
@@ -1008,7 +1031,7 @@ export class Paper {
     await this.after?.stop(); await this.afterBuild?.stop(); this.after = undefined; this.afterBuild = undefined; this.proposalPanel?.dispose(); this.proposalPanel = undefined;
     this.task = undefined; this.review = undefined; this.selectedEdit = undefined; this.alignedPage = undefined; await this.context.workspaceState.update(this.key, undefined);
     this.mainViewSide = 'before'; this.currentSide = 'before'; this.syncPanel(this.panel, 'before');
-    this.panel.title = `论文 · ${path.basename(this.main)}`; this.difference = false; this.both({ type: 'hasTask', value: false }); this.both({ type: 'difference', enabled: false }); this.markers = { before: [], after: [] }; this.both({ type: 'markers', markers: this.markers });
+    this.panel.title = `Paper · ${path.basename(this.main)}`; this.difference = false; this.both({ type: 'hasTask', value: false }); this.both({ type: 'difference', enabled: false }); this.markers = { before: [], after: [] }; this.both({ type: 'markers', markers: this.markers });
     await this.reconcileOriginalNotes(); for (const note of this.notes) delete note.proposalTask; this.proposalVersions.clear(); if (this.notes.length) await this.saveNotes(); await this.startSide('before', this.root, path.relative(this.root, this.main)); await this.refreshAnchors(); this.ui.refresh();
   }
   async dispose(closePanels = true) {

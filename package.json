@@ -2,7 +2,7 @@
   "name": "pdf-local-copilot",
   "displayName": "PDF Local Copilot",
   "description": "Annotate your paper, revise with local Codex or Claude, and review live TeXpresso previews.",
-  "version": "0.5.9",
+  "version": "0.6.0",
   "publisher": "local-paper-tools",
   "license": "MIT",
   "engines": {
@@ -26,221 +26,221 @@
     "commands": [
       {
         "command": "pdfLocal.open",
-        "title": "PDF Local Copilot: 启动 PDF 批注",
+        "title": "PDF Local Copilot: Open Paper",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "pdfLocal.run",
-        "title": "PDF Local Copilot: 论文对话与任务队列",
+        "title": "PDF Local Copilot: Paper Chat and Task Queue",
         "icon": "$(comment-discussion)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.stop",
-        "title": "PDF Local Copilot: 停止修改",
+        "title": "PDF Local Copilot: Stop Agent",
         "icon": "$(debug-stop)",
         "enablement": "pdfLocal.running"
       },
       {
         "command": "pdfLocal.compare",
-        "title": "PDF Local Copilot: 查看本轮源码差异",
+        "title": "PDF Local Copilot: Compare Round Changes",
         "icon": "$(split-horizontal)",
         "enablement": "pdfLocal.hasTask"
       },
       {
         "command": "pdfLocal.apply",
-        "title": "PDF Local Copilot: 完成本轮审阅",
+        "title": "PDF Local Copilot: Finish Review",
         "icon": "$(check-all)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.endTask",
-        "title": "PDF Local Copilot: 结束本次审阅",
+        "title": "PDF Local Copilot: End Review",
         "icon": "$(close)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.editNote",
-        "title": "PDF Local Copilot: 编辑批注",
+        "title": "PDF Local Copilot: Edit Annotation",
         "icon": "$(edit)"
       },
       {
         "command": "pdfLocal.deleteNote",
-        "title": "PDF Local Copilot: 删除批注",
+        "title": "PDF Local Copilot: Delete Annotation",
         "icon": "$(trash)"
       },
       {
         "command": "pdfLocal.source",
-        "title": "PDF Local Copilot: 转到批注源码",
+        "title": "PDF Local Copilot: Go to Annotation Source",
         "icon": "$(go-to-file)"
       },
       {
         "command": "pdfLocal.revealNote",
-        "title": "PDF Local Copilot: 在论文中显示批注",
+        "title": "PDF Local Copilot: Reveal Annotation in PDF",
         "icon": "$(preview)"
       },
       {
         "command": "pdfLocal.diff",
-        "title": "PDF Local Copilot: 查看源码差异",
+        "title": "PDF Local Copilot: View Source Diff",
         "icon": "$(diff)"
       },
       {
         "command": "pdfLocal.reject",
-        "title": "PDF Local Copilot: 撤销此文件的任务修改",
+        "title": "PDF Local Copilot: Reject File Changes",
         "icon": "$(discard)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.previousPage",
-        "title": "PDF Local Copilot: 上一页",
+        "title": "PDF Local Copilot: Previous Page",
         "icon": "$(chevron-left)"
       },
       {
         "command": "pdfLocal.nextPage",
-        "title": "PDF Local Copilot: 下一页",
+        "title": "PDF Local Copilot: Next Page",
         "icon": "$(chevron-right)"
       },
       {
         "command": "pdfLocal.selectPage",
-        "title": "PDF Local Copilot: 跳转到页码",
+        "title": "PDF Local Copilot: Go to Page",
         "icon": "$(list-ordered)"
       },
       {
         "command": "pdfLocal.toggleRegion",
-        "title": "PDF Local Copilot: 切换文字选择与区域框选",
+        "title": "PDF Local Copilot: Toggle Text and Region Selection",
         "icon": "$(selection)"
       },
       {
         "command": "pdfLocal.zoomIn",
-        "title": "PDF Local Copilot: 放大论文",
+        "title": "PDF Local Copilot: Zoom In",
         "icon": "$(zoom-in)"
       },
       {
         "command": "pdfLocal.zoomOut",
-        "title": "PDF Local Copilot: 缩小论文",
+        "title": "PDF Local Copilot: Zoom Out",
         "icon": "$(zoom-out)"
       },
       {
         "command": "pdfLocal.fit",
-        "title": "PDF Local Copilot: 适应页面宽度",
+        "title": "PDF Local Copilot: Fit Width",
         "icon": "$(screen-normal)"
       },
       {
         "command": "pdfLocal.difference",
-        "title": "PDF Local Copilot: 查看当前修改差异",
+        "title": "PDF Local Copilot: View Changes",
         "icon": "$(git-compare)",
         "enablement": "pdfLocal.hasTask"
       },
       {
         "command": "pdfLocal.logs",
-        "title": "PDF Local Copilot: 查看执行和编译日志",
+        "title": "PDF Local Copilot: Show Logs",
         "icon": "$(output)"
       },
       {
         "command": "pdfLocal.undoApplication",
-        "title": "PDF Local Copilot: 撤回本轮修改",
+        "title": "PDF Local Copilot: Undo Round",
         "icon": "$(discard)",
         "enablement": "pdfLocal.hasUndo && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.rebuild",
-        "title": "PDF Local Copilot: 构建 PDF 与参考文献",
+        "title": "PDF Local Copilot: Build PDF and Bibliography",
         "icon": "$(refresh)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.nextChange",
-        "title": "PDF Local Copilot: 下一处修改",
+        "title": "PDF Local Copilot: Next Change",
         "icon": "$(diff-single)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.previousChange",
-        "title": "PDF Local Copilot: 上一处修改",
+        "title": "PDF Local Copilot: Previous Change",
         "icon": "$(arrow-up)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.acceptEdit",
-        "title": "PDF Local Copilot: 接受此处修改",
+        "title": "PDF Local Copilot: Accept Change",
         "icon": "$(check)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.rejectEdit",
-        "title": "PDF Local Copilot: 拒绝此处修改",
+        "title": "PDF Local Copilot: Reject Change",
         "icon": "$(discard)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.reviewEdit",
-        "title": "PDF Local Copilot: 查看此处修改",
+        "title": "PDF Local Copilot: Review Change",
         "icon": "$(comment-discussion)",
         "enablement": "pdfLocal.hasTask"
       },
       {
         "command": "pdfLocal.newSession",
-        "title": "PDF Local Copilot: 新建论文会话",
+        "title": "PDF Local Copilot: New Paper Session",
         "icon": "$(comment-add)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.manuscript",
-        "title": "PDF Local Copilot: 查看当前论文",
+        "title": "PDF Local Copilot: Show Current Paper",
         "icon": "$(history)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.proposal",
-        "title": "PDF Local Copilot: 显示当前工作稿",
+        "title": "PDF Local Copilot: Show Working Draft",
         "icon": "$(preview)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.addClaudeAgent",
-        "title": "PDF Local Copilot: 新增 Claude 代理",
+        "title": "PDF Local Copilot: Add Claude Agent",
         "icon": "$(add)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.pdfPosition",
-        "title": "PDF Local Copilot: 跳转到对应 PDF 位置",
+        "title": "PDF Local Copilot: Go to PDF Location",
         "icon": "$(go-to-file)",
         "enablement": "resourceScheme == file && resourceExtname == .tex"
       },
       {
         "command": "pdfLocal.refreshReview",
-        "title": "PDF Local Copilot: 刷新本次修改",
+        "title": "PDF Local Copilot: Refresh Current Changes",
         "icon": "$(refresh)",
         "enablement": "pdfLocal.hasTask && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.selectAllNotes",
-        "title": "PDF Local Copilot: 全选批注",
+        "title": "PDF Local Copilot: Select All Annotations",
         "icon": "$(check-all)",
         "enablement": "pdfLocal.hasPaper && pdfLocal.hasOpenNotes"
       },
       {
         "command": "pdfLocal.sendSelectedNotes",
-        "title": "PDF Local Copilot: 发送已选批注",
+        "title": "PDF Local Copilot: Send Selected Annotations",
         "icon": "$(send)",
         "enablement": "pdfLocal.hasPaper && pdfLocal.hasSelectedNotes"
       },
       {
         "command": "pdfLocal.acceptSelectedEdits",
-        "title": "PDF Local Copilot: 接受已选修改",
+        "title": "PDF Local Copilot: Accept Selected Changes",
         "icon": "$(check)",
         "enablement": "pdfLocal.hasTask && pdfLocal.hasSelectedEdits && !pdfLocal.running"
       },
       {
         "command": "pdfLocal.refreshHistory",
-        "title": "PDF Local Copilot: 刷新本地修改历史",
+        "title": "PDF Local Copilot: Refresh Local History",
         "icon": "$(refresh)",
         "enablement": "pdfLocal.hasPaper"
       },
       {
         "command": "pdfLocal.historyDiff",
-        "title": "PDF Local Copilot: 查看本地历史差异",
+        "title": "PDF Local Copilot: View Local History Diff",
         "icon": "$(diff)"
       }
     ],
@@ -518,7 +518,7 @@
           "type": "array",
           "default": [],
           "scope": "resource",
-          "description": "在 latexmk 之前执行的项目构建步骤。参数可使用 ${workspaceFolder}，会解析到当前项目目录。",
+          "description": "Project build steps executed before latexmk. ${workspaceFolder} resolves to the current project directory.",
           "items": {
             "type": "object",
             "required": [
@@ -542,7 +542,7 @@
           "type": "array",
           "default": [],
           "scope": "machine",
-          "description": "自定义代理。Claude 类型可指定独立的 claude_config_dir；每个代理分别保存会话。",
+          "description": "Custom agents. Claude profiles can use a separate claude_config_dir; each agent retains its own session.",
           "items": {
             "type": "object",
             "required": [
@@ -587,15 +587,15 @@
       "pdfLocal": [
         {
           "id": "pdfLocal.notes",
-          "name": "PDF 批注"
+          "name": "PDF Annotations"
         },
         {
           "id": "pdfLocal.changes",
-          "name": "本次修改"
+          "name": "Current Changes"
         },
         {
           "id": "pdfLocal.history",
-          "name": "本地修改历史",
+          "name": "Local History",
           "visibility": "collapsed"
         }
       ]
@@ -603,19 +603,19 @@
     "viewsWelcome": [
       {
         "view": "pdfLocal.notes",
-        "contents": "在论文页面上选中文字或框选区域，添加批注。\n[打开 LaTeX 主文件](command:pdfLocal.open)",
+        "contents": "Select text or a region in the PDF to add an annotation.\n[Open LaTeX Main File](command:pdfLocal.open)",
         "when": "!pdfLocal.hasPaper"
       },
       {
         "view": "pdfLocal.changes",
-        "contents": "在 PDF 上点击编号修改标记，逐处接受、拒绝或补充批注。侧栏用于导航。",
+        "contents": "Click numbered PDF markers to accept, reject, or follow up on changes. Use the sidebar to navigate.",
         "when": "!pdfLocal.hasTask"
       }
     ],
     "customEditors": [
       {
         "viewType": "pdfLocal.paper",
-        "displayName": "Paper PDF 批注",
+        "displayName": "Paper PDF Annotations",
         "selector": [
           {
             "filenamePattern": "*.pdf"
@@ -632,7 +632,7 @@
     "test:host": "node scripts/test-host.mjs",
     "test:ui": "npm run build && node scripts/test-ui.mjs",
     "native:build": "node scripts/build-native.mjs",
-    "package": "npm run build && vsce package --target darwin-arm64 --no-dependencies --out artifacts/pdf-local-copilot-0.5.9.vsix"
+    "package": "npm run build && vsce package --target darwin-arm64 --no-dependencies --out artifacts/pdf-local-copilot-0.6.0.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

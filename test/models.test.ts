@@ -18,8 +18,8 @@ test('model and effort overrides reach both new and resumed CLI sessions', () =>
     }
   }
   assert.ok(!agentArguments('claude').includes('--model')); assert.ok(!agentArguments('codex').includes('-c'));
-  assert.throws(() => runOptions({ effort: 'ultra' }, 'claude'), /无效/);
-  assert.throws(() => runOptions({ model: 'bad\nmodel' }, 'codex'), /无效/);
+  assert.throws(() => runOptions({ effort: 'ultra' }, 'claude'), /Invalid/);
+  assert.throws(() => runOptions({ model: 'bad\nmodel' }, 'codex'), /Invalid/);
 });
 test('Claude catalogs read each named profile independently', async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-models-'));

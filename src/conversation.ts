@@ -26,7 +26,7 @@ export class ConversationStore {
   async load() {
     try { this.value = JSON.parse(await fs.readFile(this.file, 'utf8')); }
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
-    if (!Array.isArray(this.value.messages) || !Array.isArray(this.value.queue)) throw new Error('论文对话记录格式无效。');
+    if (!Array.isArray(this.value.messages) || !Array.isArray(this.value.queue)) throw new Error('Invalid paper conversation data.');
     if (this.value.activeTurn) {
       for (const message of this.value.messages) if (message.status === 'running') message.status = 'interrupted';
       this.value.activeTurn = undefined; this.value.paused = true;
@@ -41,7 +41,7 @@ export class ConversationStore {
     return this.writing;
   }
   async reset(agent: Agent) {
-    if (this.value.activeTurn || this.value.queue.length) throw new Error('请先停止或移除当前排队任务，再新建会话。');
+    if (this.value.activeTurn || this.value.queue.length) throw new Error('Stop or remove queued tasks before starting a new session.');
     await this.save();
     await fs.copyFile(this.file, this.file.replace(/\.json$/, `.${this.value.id}.json`));
     this.value = this.fresh(agent); await this.save();

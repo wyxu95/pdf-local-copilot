@@ -26,25 +26,25 @@ async function apply(root: string, main: string, change: HistoryChange, before?:
   if (!change.afterExists) return undefined;
   if (change.patch !== undefined) {
     const result = applyPatch(before?.toString('utf8') || '', change.patch);
-    if (result === false) throw new Error(`本地历史差异无法还原：${change.file}`);
+    if (result === false) throw new Error(`Cannot reconstruct the local history patch: ${change.file}`);
     return Buffer.from(result);
   }
-  if (!change.blob || !/^[a-f0-9]{64}$/.test(change.blob)) throw new Error('本地历史文件无效。');
+  if (!change.blob || !/^[a-f0-9]{64}$/.test(change.blob)) throw new Error('Invalid local history file.');
   const bytes = await fs.readFile(path.join(directory(root, main), 'blobs', change.blob));
-  if (digest(bytes) !== change.blob) throw new Error(`本地历史文件校验失败：${change.file}`);
+  if (digest(bytes) !== change.blob) throw new Error(`Local history checksum failed: ${change.file}`);
   return bytes;
 }
 export async function readHistoryFile(root: string, main: string, head: string, point: string, side: 'before' | 'after', file: string) {
-  if (!inside(root, path.resolve(root, file))) throw new Error('历史文件不属于此项目。');
+  if (!inside(root, path.resolve(root, file))) throw new Error('The historical file is outside this project.');
   const index: HistoryIndex = JSON.parse(await fs.readFile(path.join(directory(root, main), 'index.json'), 'utf8'));
-  if (index.head !== head || (await scope(root))?.head !== head || !index.points.some(entry => entry.id === point && entry.files.some(change => change.file === file))) throw new Error('该记录已超出当前 commit 的本地历史范围。');
+  if (index.head !== head || (await scope(root))?.head !== head || !index.points.some(entry => entry.id === point && entry.files.some(change => change.file === file))) throw new Error('This record is outside the local history scope of the current commit.');
   let bytes = await original(root, index, file);
   for (const entry of index.points) {
     if (entry.id === point && side === 'before') return bytes || Buffer.alloc(0);
     const change = entry.files.find(change => change.file === file); if (change) bytes = await apply(root, main, change, bytes);
     if (entry.id === point) return bytes || Buffer.alloc(0);
   }
-  throw new Error('找不到本地修改记录。');
+  throw new Error('Local history record not found.');
 }
 
 export class LocalHistory {

@@ -4,7 +4,7 @@ export interface AgentActivity {
 export interface AgentUpdate { text: string; activities: AgentActivity[] }
 export const contentText = (content: unknown): string => typeof content === 'string' ? content : Array.isArray(content) ? content.map(block => block?.text || '').filter(Boolean).join('\n') : content == null ? '' : JSON.stringify(content, null, 2);
 const display = (value: unknown) => {
-  const text = contentText(value); return text.length > 32000 ? text.slice(0, 16000) + '\n…（完整内容见执行日志）…\n' + text.slice(-16000) : text;
+  const text = contentText(value); return text.length > 32000 ? text.slice(0, 16000) + '\n… (Full output is available in Logs.) …\n' + text.slice(-16000) : text;
 };
 
 export class AgentOutput {
@@ -50,21 +50,21 @@ export class AgentOutput {
     } else if (e.type === 'user') {
       for (const block of Array.isArray(e.message?.content) ? e.message.content : []) if (block.type === 'tool_result') {
         const old = this.activities.get(block.tool_use_id);
-        this.activities.set(block.tool_use_id, { id: block.tool_use_id, title: old?.title || '工具输出', input: old?.input, status: block.is_error ? 'failed' : 'completed', output: display(block.content) });
+        this.activities.set(block.tool_use_id, { id: block.tool_use_id, title: old?.title || 'Tool Output', input: old?.input, status: block.is_error ? 'failed' : 'completed', output: display(block.content) });
       }
     } else if (e.type === 'tool_progress') {
-      if (!this.activities.has(e.tool_use_id)) this.tool(e.tool_use_id, e.tool_name || '执行工具');
+      if (!this.activities.has(e.tool_use_id)) this.tool(e.tool_use_id, e.tool_name || 'Run Tool');
     } else if (e.type === 'system' && e.subtype === 'init') {
-      this.activities.set('connection', { id: 'connection', title: e.model ? `已连接 · ${e.model}` : '代理会话已连接', status: 'completed' });
+      this.activities.set('connection', { id: 'connection', title: e.model ? `Connected · ${e.model}` : 'Agent session connected', status: 'completed' });
     } else if (/^item\.(started|updated|completed)$/.test(e.type || '')) {
       const item = e.item || {}, id = item.id || `item-${++this.sequence}`;
       const status = item.status === 'failed' || item.exit_code ? 'failed' : e.type === 'item.completed' ? 'completed' : 'running';
       if (item.type === 'agent_message') this.texts.set(id, item.text || '');
-      else if (item.type === 'command_execution') this.activities.set(id, { id, title: '执行命令', input: item.command, output: display(item.aggregated_output), status });
-      else if (item.type === 'file_change') this.activities.set(id, { id, title: '修改文件', input: (item.changes || []).map((change: any) => `${change.kind || 'update'} · ${change.path}`).join('\n'), status });
-      else if (item.type === 'mcp_tool_call') this.activities.set(id, { id, title: `${item.server || 'MCP'} · ${item.tool || '工具'}`, input: display(item.arguments), output: display(item.result?.content || item.error), status });
-      else if (item.type === 'web_search') this.activities.set(id, { id, title: '搜索网页', input: item.query, status });
-      else if (item.type === 'reasoning' && item.text) this.activities.set(id, { id, title: '分析进度', output: display(item.text), status });
+      else if (item.type === 'command_execution') this.activities.set(id, { id, title: 'Run Command', input: item.command, output: display(item.aggregated_output), status });
+      else if (item.type === 'file_change') this.activities.set(id, { id, title: 'Edit Files', input: (item.changes || []).map((change: any) => `${change.kind || 'update'} · ${change.path}`).join('\n'), status });
+      else if (item.type === 'mcp_tool_call') this.activities.set(id, { id, title: `${item.server || 'MCP'} · ${item.tool || 'Tool'}`, input: display(item.arguments), output: display(item.result?.content || item.error), status });
+      else if (item.type === 'web_search') this.activities.set(id, { id, title: 'Search Web', input: item.query, status });
+      else if (item.type === 'reasoning' && item.text) this.activities.set(id, { id, title: 'Reasoning Progress', output: display(item.text), status });
       else return;
     } else if (e.type === 'result' && e.result) {
       const normalized = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -74,7 +74,7 @@ export class AgentOutput {
   }
   diagnostic(text: string) {
     const old = this.activities.get('diagnostic');
-    this.activities.set('diagnostic', { id: 'diagnostic', title: 'CLI 日志', output: display((old?.output || '') + text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')), status: 'running' }); this.emit();
+    this.activities.set('diagnostic', { id: 'diagnostic', title: 'CLI Logs', output: display((old?.output || '') + text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')), status: 'running' }); this.emit();
   }
   finish(failed: boolean) { for (const activity of this.activities.values()) if (activity.status === 'running') activity.status = failed ? 'failed' : 'completed'; this.emit(); }
 }

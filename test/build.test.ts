@@ -22,7 +22,7 @@ test('magic roots, BibTeX builds, and external SyncTeX work with real TeX Live',
     assert.equal(source.file, main); assert.ok(source.line >= 3);
     const before = await fs.readFile(result.pdf);
     await fs.writeFile(main, '\\documentclass{article}\n\\begin{document}\\undefinedcommand\\end{document}');
-    await assert.rejects(build.build(), /构建失败/); assert.deepEqual(await fs.readFile(result.pdf), before, 'A failed build replaced the last valid PDF');
+    await assert.rejects(build.build(), /build failed/); assert.deepEqual(await fs.readFile(result.pdf), before, 'A failed build replaced the last valid PDF');
   } finally { await build.stop(); await fs.rm(temp, { recursive: true, force: true }); }
 });
 test('Biber, project pre-build steps, and the PDF preview backend work together', { timeout: 90000 }, async () => {

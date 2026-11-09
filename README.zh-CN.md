@@ -12,30 +12,30 @@
 
 ## 安装与打开
 
-先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.5.9.vsix`。
+先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.6.0.vsix`。
 
 ```sh
-code --install-extension artifacts/pdf-local-copilot-0.5.9.vsix
+code --install-extension artifacts/pdf-local-copilot-0.6.0.vsix
 ```
 
-打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: 启动 PDF 批注**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
+打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
 
 代理在真实项目目录启动，直接读写项目文件。发送前保存当前编辑，PDF 增量渲染同一份工作稿。原生 Diff 的修改侧也是这个真实文件，可直接编辑。
 
-已有 PDF 可通过 **Open With… → Paper PDF 批注** 打开，主文件根据同名 TeX 或 `% !TeX root = …` 识别。
+已有 PDF 可通过 **Open With… → Paper PDF Annotations** 打开，主文件根据同名 TeX 或 `% !TeX root = …` 识别。
 
 ## PDF 批注与任务队列
 
 - 页面适配可用宽度并裁掉左右空白，保留图表；多页连续滚动，页间距为 5px，支持放大和缩小。
-- Ctrl＋左键点击 PDF，跳到最近正文对应的源码；macOS 同时支持 Cmd＋左键。TeX 原生右键菜单中的 **跳转到对应 PDF 位置** 提供正向同步。
-- 选中文字后点击 **添加批注**，在选区下方填写意见；区域选择可框选公式或图片。
+- Ctrl＋左键点击 PDF，跳到最近正文对应的源码；macOS 同时支持 Cmd＋左键。TeX 原生右键菜单中的 **Go to PDF Location** 提供正向同步。
+- 选中文字后点击 **Add Annotation**，在选区下方填写意见；区域选择可框选公式或图片。
 - 重载后按原选中文字跨页恢复批注位置，兼容断行连字符和字体连字。原文已删除的批注保留在侧栏，标记为“待重新定位”。
 - 批注支持多行和 Ctrl/Cmd+Enter 保存；点击空白处保存文字并收起，编号可重新打开意见。
-- 批注中的 **发送任务** 会保存并直接提交这条意见，使用当前代理、模型和思考强度；代理忙时排入同一会话。侧栏复选框可组合多条批注和总体要求，再按 **Enter** 或点击 **发送**；**Shift+Enter** 换行，支持输入法组合输入。
+- 批注中的 **Send Task** 会保存并直接提交这条意见，使用当前代理、模型和思考强度；代理忙时排入同一会话。侧栏复选框可组合多条批注和总体要求，再按 **Enter** 或点击 **Send**；**Shift+Enter** 换行，支持输入法组合输入。
 - “PDF 批注”标题栏的双勾按钮用于全选待处理批注，发送按钮将已勾选批注连同聊天草稿、模型和思考强度一起发送；运行期间会加入当前会话队列。
 - 运行期间可继续准备并发送下一轮。各轮在同一个 CLI 会话中顺序执行。
 
-聊天实时展示代理回复、工具调用、命令输出和执行状态，工具详情可展开。**执行日志** 打开完整原生日志。关闭聊天页后，可通过 **论文对话与任务队列** 重新打开并继续原会话。
+聊天实时展示代理回复、工具调用、命令输出和执行状态，工具详情可展开。**Logs** 打开完整原生日志。关闭聊天页后，可通过 **Paper Chat and Task Queue** 重新打开并继续原会话。
 
 每轮提示词会提及 **SE-paper-revising**，要求代理先读取配置目录下的 `skills/paper-review/SKILL.md`，再按作者的批注范围修改。Codex 使用 `CODEX_HOME`（默认为 `~/.codex`）；Claude 使用对应的 `claude_config_dir`，例如 uclaude 的 `~/.claude-uni`。作者的明确要求优先，技能不可用时会要求代理说明并继续处理本轮请求。
 
@@ -51,28 +51,28 @@ code --install-extension artifacts/pdf-local-copilot-0.5.9.vsix
 
 从 Git“更改”、资源管理器等原生入口打开文件或差异时，落入论文对话组的标签也会转到源码组；聊天标签、草稿和会话继续保留。
 
-条目复选框用于选择修改，文件复选框可选择整个文件。点击标题栏的勾形按钮 **接受已选修改** 后，所选条目及对应 PDF 高亮才会清除。修改列表遵循项目的 Git 忽略规则，并过滤 LaTeX 自动生成的编译文件。
+条目复选框用于选择修改，文件复选框可选择整个文件。点击标题栏的勾形按钮 **Accept Selected Changes** 后，所选条目及对应 PDF 高亮才会清除。修改列表遵循项目的 Git 忽略规则，并过滤 LaTeX 自动生成的编译文件。
 
 PDF 右侧的修改气泡关联本轮要求：
 
 - 批注发起的修改展示原批注、原选中文字和改动内容。
-- 直接从聊天发起的修改标为 **来自会话**，展示当轮要求。
-- 卡片提供 **接受修改、拒绝修改、继续提问、源码差异**。点击外部可收起。
+- 直接从聊天发起的修改标为 **From Conversation**，展示当轮要求。
+- 卡片提供 **Accept Change、Reject Change、Follow Up、Source Diff**。点击外部可收起。
 - 代理完成一轮后，原批注和原文选区高亮默认收起；修改气泡继续提供来源批注和审阅操作。编号优先放在选区斜上方，避开正文及其他编号。
 - 接受修改后，该条目从待处理列表移除，相应 PDF 高亮、气泡及原始批注标记收起。仍有未接受修改的文件和条目继续显示；全部接受的文件组收起。原批注作为来源保留在审阅记录中。
-- **继续提问** 将来源上下文带回当前会话的待发送区，可补充要求后发送。
+- **Follow Up** 将来源上下文带回当前会话的待发送区，可补充要求后发送。
 
 文本 Diff 的对照内容会随接受操作更新，仅突出尚未接受的部分；撤回使用的原始备份继续保留。
 
-**接受** 确认保留已写入项目的改动；**拒绝** 立即恢复那一处内容。**完成本轮审阅** 保存记录并结束审阅；**结束本次审阅** 保留当前工作稿及差异记录。后续任务继续使用同一个 CLI 会话。
+**接受** 确认保留已写入项目的改动；**Reject** 立即恢复那一处内容。**Finish Review** 保存记录并结束审阅；**End Review** 保留当前工作稿及差异记录。后续任务继续使用同一个 CLI 会话。
 
-**撤回本轮修改** 恢复该轮改动的文件，包括新增和删除的文件。撤回前会检查文件哈希，以保留后续编辑。原生编辑器的未保存内容可先保存，再完成审阅或撤回。
+**Undo Round** 恢复该轮改动的文件，包括新增和删除的文件。撤回前会检查文件哈希，以保留后续编辑。原生编辑器的未保存内容可先保存，再完成审阅或撤回。
 
-**新会话** 保持可点击，执行、排队或待审阅状态会给出具体提示；满足条件后显式重置上下文。
+**New Session** 保持可点击，执行、排队或待审阅状态会给出具体提示；满足条件后显式重置上下文。
 
 ## 本地修改历史
 
-在 **本次修改** 中点击勾按钮同意修改后，**本地修改历史** 会生成一个节点；一次批量同意对应一个节点，只记录已同意的部分。展开节点后点击文件，在源码组临时打开当时的只读 Diff，当前工作稿、PDF 和代理继续使用最新内容。普通保存、仅勾选复选框、代理完成和拒绝操作均不会创建节点。
+在 **Current Changes** 中点击勾按钮同意修改后，**Local History** 会生成一个节点；一次批量同意对应一个节点，只记录已同意的部分。展开节点后点击文件，在源码组临时打开当时的只读 Diff，当前工作稿、PDF 和代理继续使用最新内容。普通保存、仅勾选复选框、代理完成和拒绝操作均不会创建节点。
 
 历史以当前 Git HEAD 为起点，遵循项目忽略规则并过滤编译产物。每次 commit 后，旧节点、对应差异文件和打开的旧历史 Diff 自动清理；剩余修改在再次同意时生成新节点。文本仅保存差异片段，二进制修改保存变动内容。记录位于项目 `.pdf-local-copilot/history/`。旧版自动保存节点会移入该目录的归档，commit 后一并清理。
 
@@ -98,11 +98,11 @@ PDF 右侧的修改气泡关联本轮要求：
 
 ## 代理、模型与思考强度
 
-默认 Codex、Claude Code 与自定义代理并列显示。右侧代理下方可选择模型和思考强度，也可通过 **其他模型…** 输入模型名。每轮发送时保存所选参数，运行期间可为下一轮调整；选择“默认”沿用 CLI 设置。
+默认 Codex、Claude Code 与自定义代理并列显示。右侧代理下方可选择模型和思考强度，也可通过 **Other Model…** 输入模型名。每轮发送时保存所选参数，运行期间可为下一轮调整；选择“默认”沿用 CLI 设置。
 
 Codex 模型选项读取本地模型缓存，Claude 模型选项包含常用别名与该配置目录中的模型。[Codex 参数说明](https://learn.chatgpt.com/docs/config-file/config-reference)，[Claude 参数说明](https://code.claude.com/docs/en/model-config)。
 
-选择 **＋ 新增 Claude 代理…**，填写名称与 `claude_config_dir`，例如 `uclaude` 和 `~/.claude-uni`。也可在用户设置中配置：
+选择 **＋ Add Claude Agent…**，填写名称与 `claude_config_dir`，例如 `uclaude` 和 `~/.claude-uni`。也可在用户设置中配置：
 
 ```json
 {
@@ -145,7 +145,7 @@ npm run check
 npm test
 npm run test:ui
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.5.9.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.6.0.vsix npm run test:ui
 ```
 
 UI 测试使用隔离的 VS Code 配置与真实 TeXpresso / TeX Live，覆盖真实目录写入、差异备份、旧任务迁移、TeX Diff 与 PDF 联动、其他文本 Diff、批注来源／清理／追问、整轮撤回和连续会话。截图在 `output/playwright/`。

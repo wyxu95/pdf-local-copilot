@@ -27,7 +27,7 @@ test('conversation reload preserves queued tasks and only explicit reset changes
     store.value.runOptions = { model: 'next-model', effort: 'high' }; await store.save();
     const loaded = new ConversationStore(file); await loaded.load(); assert.equal(loaded.value.id, id); assert.equal(loaded.value.queue[0].instruction, 'First');
     assert.deepEqual(loaded.value.queue[0].options, { model: 'queued-model', effort: 'low' }); assert.equal(loaded.value.runOptions?.model, 'next-model');
-    await assert.rejects(loaded.reset('codex'), /排队任务/); loaded.value.queue = []; await loaded.save(); assert.equal(loaded.value.id, id);
+    await assert.rejects(loaded.reset('codex'), /queued tasks/); loaded.value.queue = []; await loaded.save(); assert.equal(loaded.value.id, id);
     await loaded.reset('codex'); assert.notEqual(loaded.value.id, id);
   } finally { await fs.rm(temp, { recursive: true, force: true }); }
 });

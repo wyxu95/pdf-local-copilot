@@ -9,7 +9,7 @@ export interface ModelCatalog { models: ModelOption[]; efforts: string[] }
 export const effortLevels = (kind: AgentKind) => kind === 'codex' ? ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] : ['low', 'medium', 'high', 'xhigh', 'max'];
 export function runOptions(value: unknown, kind: AgentKind): RunOptions {
   const { model = '', effort = '' } = (value || {}) as RunOptions;
-  if (typeof model !== 'string' || model.length > 200 || /[\u0000-\u001f]/.test(model) || typeof effort !== 'string' || effort && ![...effortLevels(kind), ...(kind === 'codex' ? ['none', 'minimal'] : [])].includes(effort)) throw new Error('模型或思考强度无效。');
+  if (typeof model !== 'string' || model.length > 200 || /[\u0000-\u001f]/.test(model) || typeof effort !== 'string' || effort && ![...effortLevels(kind), ...(kind === 'codex' ? ['none', 'minimal'] : [])].includes(effort)) throw new Error('Invalid model or reasoning effort.');
   return { model: model.trim(), effort };
 }
 export async function modelCatalog(profile: AgentProfile): Promise<ModelCatalog> {

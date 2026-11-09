@@ -28,8 +28,8 @@ export async function resolveMain(file: string, root: string): Promise<string[]>
     try { await fs.access(sibling); current = sibling; } catch { return mainCandidates(root); }
   }
   while (true) {
-    if (!inside(root, current)) throw new Error('主文件位于当前项目之外。');
-    if (visited.has(current)) throw new Error('TeX root 注释形成循环，请修正主文件路径。');
+    if (!inside(root, current)) throw new Error('The main file is outside the current project.');
+    if (visited.has(current)) throw new Error('The TeX root directives form a cycle. Correct the main-file path.');
     visited.add(current); const text = await fs.readFile(current, 'utf8');
     const magic = text.match(/^\s*%\s*!\s*TeX\s+root\s*=\s*(.+?)\s*$/im);
     if (magic) { current = path.resolve(path.dirname(current), magic[1].replace(/^['"]|['"]$/g, '')); continue; }
@@ -39,7 +39,7 @@ export async function resolveMain(file: string, root: string): Promise<string[]>
 }
 export async function engineFor(main: string): Promise<TexEngine> {
   const text = await fs.readFile(main, 'utf8'), magic = text.match(/^\s*%\s*!\s*TeX\s+(?:program|TS-program)\s*=\s*(\S+)/im)?.[1]?.toLowerCase();
-  if (magic && !['xelatex', 'pdflatex', 'lualatex'].includes(magic)) throw new Error(`暂不支持 TeX 引擎 ${magic}。可选择 XeLaTeX、pdfLaTeX 或 LuaLaTeX。`);
+  if (magic && !['xelatex', 'pdflatex', 'lualatex'].includes(magic)) throw new Error(`Unsupported TeX engine ${magic}. Choose XeLaTeX, pdfLaTeX, or LuaLaTeX.`);
   return (magic as TexEngine) || 'xelatex';
 }
 export function parseProblems(output: string, cwd: string): BuildProblem[] {
@@ -58,14 +58,14 @@ export class BuildManager {
       const accept = (s: Buffer) => { const text = s.toString('utf8'); output = (output + text).slice(-2 * 1024 * 1024); this.log(text); };
       child.stdout.on('data', accept); child.stderr.on('data', accept); child.once('error', reject);
       const timer = setTimeout(() => { void terminate(child); }, 180000);
-      child.once('close', code => { clearTimeout(timer); this.child = undefined; code === 0 ? resolve(output) : reject(Object.assign(new Error(`${binary} 构建失败（${code}）。详情见 Output。`), { output })); });
+      child.once('close', code => { clearTimeout(timer); this.child = undefined; code === 0 ? resolve(output) : reject(Object.assign(new Error(`${binary} build failed (${code}). See Output for details.`), { output })); });
     });
   }
   build(): Promise<BuildResult> {
     const run = this.tail.catch(() => {}).then(async () => {
-      if (this.closed) throw new Error('构建已取消。');
+      if (this.closed) throw new Error('Build cancelled.');
       await fs.mkdir(this.directory, { recursive: true }); await fs.mkdir(this.stableDirectory, { recursive: true });
-      for (const step of this.steps) { if (!step.command || !Array.isArray(step.args) || !step.args.every(a => typeof a === 'string')) throw new Error('构建步骤应包含 command 和 args 数组。'); await this.command(step.command, step.args, this.root); }
+      for (const step of this.steps) { if (!step.command || !Array.isArray(step.args) || !step.args.every(a => typeof a === 'string')) throw new Error('Each build step requires a command and an args array.'); await this.command(step.command, step.args, this.root); }
       const flag = { xelatex: '-pdfxe', pdflatex: '-pdf', lualatex: '-pdflua' }[this.engine];
       const output = await this.command('latexmk', [flag, '-synctex=1', '-interaction=nonstopmode', '-file-line-error', '-halt-on-error', `-outdir=${this.directory}`, path.basename(this.main)], path.dirname(this.main));
       const base = path.basename(this.main, '.tex');

@@ -120,12 +120,12 @@ export async function loadReview(task: Task): Promise<Review | undefined> {
 }
 export async function decide(task: Task, review: Review, id: string, decision: Decision) {
   const file = review.files.find(f => f.edits.some(e => e.id === id));
-  const edit = file?.edits.find(e => e.id === id); if (!file || !edit) throw new Error('修改已更新，请重新选择。');
+  const edit = file?.edits.find(e => e.id === id); if (!file || !edit) throw new Error('The change has been updated. Select it again.');
   // Validate the exact current proposal before replacing a decision's text.
   const expected = materialize(file, e => e.decision !== 'rejected');
   let current: Buffer | undefined;
   try { current = await fs.readFile(path.join(task.proposal, file.file)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
-  if (expected ? !current?.equals(expected) : current !== undefined) throw new Error('任务文件已被编辑，请先刷新审阅。');
+  if (expected ? !current?.equals(expected) : current !== undefined) throw new Error('The task file has changed. Refresh the review first.');
   const oldDecision = edit.decision; edit.decision = decision;
   const result = materialize(file, e => e.decision !== 'rejected'), target = path.join(task.proposal, file.file);
   try {

@@ -22,7 +22,7 @@ export async function recordWorkspace(task: Task, plan: Change[]) {
 }
 export async function undoApplication(file: string, root: string) {
   const record: Application = JSON.parse(await fs.readFile(file, 'utf8'));
-  if (record.root !== root || record.state !== 'applied') throw new Error('这次应用已撤销或不属于当前论文。');
+  if (record.root !== root || record.state !== 'applied') throw new Error('This operation has been undone or belongs to another paper.');
   const plan: Change[] = [];
   const ignored = await ignoredFiles(root, record.files.map(file => file.file));
   for (const entry of record.files) {
@@ -32,8 +32,8 @@ export async function undoApplication(file: string, root: string) {
     try { current = await fs.readFile(path.join(root, entry.file)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
     if (entry.afterHash === undefined ? current !== undefined : !current || digest(current) !== entry.afterHash) throw new Error(`Source changed since review: ${entry.file}`);
     if (entry.beforeRef) {
-      const backup = path.resolve(root, entry.beforeRef); if (!inside(path.join(root, '.pdf-local-copilot'), backup)) throw new Error('撤回记录的旧内容路径无效。');
-      old = await fs.readFile(backup); if (digest(old) !== entry.beforeHash) throw new Error(`旧内容校验失败：${entry.file}`);
+      const backup = path.resolve(root, entry.beforeRef); if (!inside(path.join(root, '.pdf-local-copilot'), backup)) throw new Error('The previous-content path in the undo record is invalid.');
+      old = await fs.readFile(backup); if (digest(old) !== entry.beforeHash) throw new Error(`Previous content checksum failed: ${entry.file}`);
     }
     plan.push({ file: entry.file, before: current, after: old, kind: old === undefined ? 'deleted' : current === undefined ? 'added' : 'modified' });
   }

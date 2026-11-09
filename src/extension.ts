@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import type { Task } from './project';
 import { HistoryFiles } from './history-files';
 import type { HistoryPoint, HistoryChange } from './local-history';
+import { displayHistoryLabel } from './history-label';
 
 let output: vscode.OutputChannel, status: vscode.StatusBarItem;
 let diagnostics: vscode.DiagnosticCollection, active: Paper | undefined;
@@ -38,14 +39,14 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(event => routeTabs([...event.opened, ...event.changed.filter(tab => tab.isActive)])));
   const open = async (uri?: vscode.Uri, panel?: vscode.WebviewPanel) => {
-    if (!vscode.workspace.isTrusted) throw new Error('请先信任此工作区，以启动本地工具。');
+    if (!vscode.workspace.isTrusted) throw new Error('Trust this workspace to run the local tools.');
     if (!(uri instanceof vscode.Uri)) uri = vscode.window.activeTextEditor?.document.uri;
-    if (uri?.scheme !== 'file' || !/\.(tex|pdf)$/i.test(uri.fsPath)) uri = (await vscode.window.showOpenDialog({ filters: { '论文 PDF / LaTeX': ['pdf', 'tex'] }, canSelectMany: false }))?.[0];
+    if (uri?.scheme !== 'file' || !/\.(tex|pdf)$/i.test(uri.fsPath)) uri = (await vscode.window.showOpenDialog({ filters: { 'Paper PDF / LaTeX': ['pdf', 'tex'] }, canSelectMany: false }))?.[0];
     if (!uri) return;
-    const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath; if (!root) throw new Error('请先打开包含论文源文件的项目文件夹。');
+    const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath; if (!root) throw new Error('Open the project folder containing the paper source first.');
     const candidates = await resolveMain(uri.fsPath, root);
-    const main = candidates.length === 1 ? candidates[0] : (await vscode.window.showQuickPick(candidates.map(file => ({ label: path.relative(root, file), file })), { title: '选择此 PDF 对应的 LaTeX 主文件' }))?.file;
-    if (!main) { if (!candidates.length) throw new Error('项目中没有找到 LaTeX 主文件，请选择包含源文件的文件夹。'); return; }
+    const main = candidates.length === 1 ? candidates[0] : (await vscode.window.showQuickPick(candidates.map(file => ({ label: path.relative(root, file), file })), { title: 'Select the LaTeX main file for this PDF' }))?.file;
+    if (!main) { if (!candidates.length) throw new Error('No LaTeX main file was found. Choose a folder containing the source.'); return; }
     const existing = [...papers].find(p => p.main === main);
     if (existing) { panel?.dispose(); existing.panel.reveal(); setActive(existing); return existing; }
     await context.workspaceState.update('lastPaper', { root, main });
@@ -75,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (found) return found;
     const source = vscode.window.visibleTextEditors.find(editor => editor.document.uri.scheme === 'file' && editor.document.fileName.endsWith('.tex'));
     if (source) return { root: vscode.workspace.getWorkspaceFolder(source.document.uri)!.uri.fsPath, main: source.document.fileName };
-    throw new Error('请打开对应的 TeX 文件并点击“启动 PDF 批注”，以恢复论文窗口。');
+    throw new Error('Open the TeX file and run Open Paper to restore the paper window.');
   };
   for (const [viewType, chat] of [['pdfLocal.paper', false], ['pdfLocal.chat', true]] as const) context.subscriptions.push(vscode.window.registerWebviewPanelSerializer(viewType, {
     deserializeWebviewPanel: async (panel, state: any) => {
@@ -88,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
         paper.page = state?.page || 0; papers.add(paper); setActive(paper); if (chat) paper.restoreChatPanel(panel);
         await paper.open(true);
         routeTabs(vscode.window.tabGroups.all.flatMap(group => group.tabs));
-      } catch (e) { report(e); panel.webview.html = `<html><body><p>请打开对应 TeX 文件，通过“启动 PDF 批注”恢复窗口。</p></body></html>`; }
+      } catch (e) { report(e); panel.webview.html = `<html><body><p>Open the TeX file and run Open Paper to restore this window.</p></body></html>`; }
     }
   }));
   register('pdfPosition', async () => {
@@ -125,7 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
   register('previousPage', () => active?.showPage(active.page - 1)); register('nextPage', () => active?.showPage(active.page + 1));
   register('selectPage', async () => {
     if (!active) return;
-    const value = await vscode.window.showInputBox({ title: '跳转到论文页码', value: String(active.page + 1), validateInput: s => /^\d+$/.test(s) && Number(s) >= 1 && Number(s) <= 10001 ? undefined : '请输入有效页码' });
+    const value = await vscode.window.showInputBox({ title: 'Go to Paper Page', value: String(active.page + 1), validateInput: s => /^\d+$/.test(s) && Number(s) >= 1 && Number(s) <= 10001 ? undefined : 'Enter a valid page number' });
     if (value) await active.showPage(Number(value) - 1);
   });
   register('toggleRegion', () => active?.toggleRegion()); register('zoomIn', () => active?.zoom(.15)); register('zoomOut', () => active?.zoom(-.15)); register('fit', () => active?.zoom(0, true)); register('difference', () => active?.toggleDifference());
@@ -135,34 +136,34 @@ function report(e: unknown) { const text = e instanceof Error ? e.message : Stri
 function setActive(paper?: Paper) { active = paper; refresh(); }
 function refresh() {
   notesTree?.refresh(); changesTree?.refresh(); historyTree?.refresh();
-  if (historyView) historyView.message = !active ? '打开论文后查看本地修改历史。' : !active.localHistory ? '正在读取本地历史…' : active.localHistory.head ? `起点：HEAD ${active.localHistory.head.slice(0, 7)}。同意修改后生成记录，commit 后自动清空。` : '当前项目尚无 Git commit。';
+  if (historyView) historyView.message = !active ? 'Open a paper to view its local history.' : !active.localHistory ? 'Loading local history…' : active.localHistory.head ? `Base: HEAD ${active.localHistory.head.slice(0, 7)}. Approvals create checkpoints; a commit clears them.` : 'This project has no Git commit yet.';
   for (const [key, value] of Object.entries({ hasPaper: !!active, hasTask: !!active?.task, running: !!active?.queueActive, hasUndo: !!active?.canUndo, hasSelectedNotes: !!active?.selectedNotes.size, hasSelectedEdits: !!active?.selectedEdits.size, hasOpenNotes: !!active?.notes.some(note => !note.status || note.status === 'open'), hasAccepted: !!active?.review?.files.some(f => f.edits.some(e => e.decision === 'accepted')) })) void vscode.commands.executeCommand('setContext', `pdfLocal.${key}`, value);
   if (!active) { status.hide(); return; }
-  notesView.badge = { value: active.notes.filter(note => !note.status || note.status === 'open').length, tooltip: '待处理论文批注' };
+  notesView.badge = { value: active.notes.filter(note => !note.status || note.status === 'open').length, tooltip: 'Open annotations' };
   const edits = active.review?.files.flatMap(f => f.edits) || [], pending = edits.filter(e => e.decision === 'pending').length;
-  changesView.badge = { value: pending, tooltip: '待决定的修改' };
-  notesView.message = active.notes.some(note => !note.status || note.status === 'open') ? '勾选或点击批注的箭头加入右侧队列，点击发送后执行。' : '在 PDF 上选中文字，点击添加批注。';
-  changesView.message = active.task ? `${edits.filter(e => e.decision === 'accepted').length} 已接受 · ${pending} 待审阅；点击打开 Diff；TeX 同步定位 PDF。` : undefined;
-  status.text = `$(book) ${active.page + 1}/${active.pageCount || '…'}${active.complete ? '' : '+'}${active.alignedPage === undefined ? '' : ` ↔ ${active.alignedPage + 1}`} · ${active.queueActive ? '$(sync~spin) 当前会话执行中' : 'TeXpresso'}`;
-  status.tooltip = '论文页码；↔ 表示按源码对齐的修改稿页码。'; status.show();
+  changesView.badge = { value: pending, tooltip: 'Changes pending review' };
+  notesView.message = active.notes.some(note => !note.status || note.status === 'open') ? 'Select annotations to send them together, or send one from its annotation card.' : 'Select text in the PDF and click Add Annotation.';
+  changesView.message = active.task ? `${edits.filter(e => e.decision === 'accepted').length} Accepted · ${pending} pending review; Click to open a Diff; TeX changes also locate the PDF.` : undefined;
+  status.text = `$(book) ${active.page + 1}/${active.pageCount || '…'}${active.complete ? '' : '+'}${active.alignedPage === undefined ? '' : ` ↔ ${active.alignedPage + 1}`} · ${active.queueActive ? '$(sync~spin) Session running' : 'TeXpresso'}`;
+  status.tooltip = 'Paper page number; the arrow shows the source-aligned working-draft page.'; status.show();
 }
 class NoteItem extends vscode.TreeItem {
   constructor(readonly paper: Paper, readonly note: Note) {
     super(note.comment.replace(/\s+/g, ' ').slice(0, 70)); this.id = note.id; this.contextValue = 'pdfLocal.note';
-    this.description = `第 ${note.page + 1} 页${note.anchorStatus === 'modified' ? ' · 原文已修改' : note.anchorStatus === 'orphaned' ? ' · 待重新定位' : ''}`;
-    this.tooltip = new vscode.MarkdownString().appendText(note.comment).appendMarkdown('\n\n').appendText(note.quote).appendMarkdown('\n\n').appendText(note.source ? `${note.source.file}:${note.source.line}\n${note.source.text}` : '页面区域批注');
+    this.description = `Page ${note.page + 1}${note.anchorStatus === 'modified' ? ' · Original text changed' : note.anchorStatus === 'orphaned' ? ' · Needs relocation' : ''}`;
+    this.tooltip = new vscode.MarkdownString().appendText(note.comment).appendMarkdown('\n\n').appendText(note.quote).appendMarkdown('\n\n').appendText(note.source ? `${note.source.file}:${note.source.line}\n${note.source.text}` : 'Page-region annotation');
     this.checkboxState = paper.selectedNotes.has(note.id) ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
-    this.command = { command: 'pdfLocal.revealNote', title: '显示 PDF 批注', arguments: [this] }; this.iconPath = new vscode.ThemeIcon('comment');
+    this.command = { command: 'pdfLocal.revealNote', title: 'Reveal PDF Annotation', arguments: [this] }; this.iconPath = new vscode.ThemeIcon('comment');
   }
 }
 class ReviewItem extends vscode.TreeItem {
   constructor(readonly paper: Paper, readonly file: ReviewFile, readonly edit?: Edit) {
-    super(edit ? `${edit.decision === 'accepted' ? '✓' : edit.decision === 'rejected' ? '×' : '○'} ${((edit.inserted || edit.removed).replace(/\s+/g, ' ').trim() || '空白修改').slice(0, 55)}` : file.file, edit ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Expanded);
+    super(edit ? `${edit.decision === 'accepted' ? '✓' : edit.decision === 'rejected' ? '×' : '○'} ${((edit.inserted || edit.removed).replace(/\s+/g, ' ').trim() || 'Whitespace Change').slice(0, 55)}` : file.file, edit ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Expanded);
     this.id = edit?.id || file.file; this.contextValue = edit ? 'pdfLocal.edit' : 'pdfLocal.change';
-    this.description = edit ? `第 ${edit.afterLine} 行` : `${file.edits.filter(e => e.decision === 'accepted').length}/${file.edits.length} 已接受`;
+    this.description = edit ? `Line ${edit.afterLine}` : `${file.edits.filter(e => e.decision === 'accepted').length}/${file.edits.length} Accepted`;
     this.checkboxState = (edit ? paper.selectedEdits.has(edit.id) : file.edits.filter(edit => edit.decision !== 'accepted').every(edit => paper.selectedEdits.has(edit.id))) ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
-    this.iconPath = new vscode.ThemeIcon(edit ? 'diff' : 'file-code'); this.tooltip = edit ? new vscode.MarkdownString().appendText(`原文：${edit.removed}\n\n修改：${edit.inserted}`) : file.file;
-    this.command = file.file.toLowerCase().endsWith('.tex') ? { command: 'pdfLocal.reviewEdit', title: '查看差异并定位 PDF', arguments: [edit ? this : new ReviewItem(paper, file, file.edits.find(edit => edit.decision !== 'accepted') || file.edits[0])] } : { command: 'pdfLocal.diff', title: '查看源码差异', arguments: [this] };
+    this.iconPath = new vscode.ThemeIcon(edit ? 'diff' : 'file-code'); this.tooltip = edit ? new vscode.MarkdownString().appendText(`Original: ${edit.removed}\n\nChange: ${edit.inserted}`) : file.file;
+    this.command = file.file.toLowerCase().endsWith('.tex') ? { command: 'pdfLocal.reviewEdit', title: 'View Diff and Locate in PDF', arguments: [edit ? this : new ReviewItem(paper, file, file.edits.find(edit => edit.decision !== 'accepted') || file.edits[0])] } : { command: 'pdfLocal.diff', title: 'View Source Diff', arguments: [this] };
   }
 }
 class NotesTree implements vscode.TreeDataProvider<NoteItem> {
@@ -188,12 +189,12 @@ class ChangesTree implements vscode.TreeDataProvider<ReviewItem> {
 }
 class HistoryItem extends vscode.TreeItem {
   constructor(readonly paper: Paper, readonly point: HistoryPoint, readonly change?: HistoryChange) {
-    super(change?.file || point.label, change ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
+    super(change?.file || displayHistoryLabel(point.label), change ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
     this.id = point.id + (change ? ':' + change.file : ''); this.contextValue = change ? 'pdfLocal.historyFile' : 'pdfLocal.historyPoint';
     this.iconPath = new vscode.ThemeIcon(change ? change.patch === undefined ? 'file-binary' : 'file-code' : 'history');
-    this.description = change ? !change.beforeExists ? '新增' : !change.afterExists ? '删除' : '修改' : `${new Date(point.created).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${point.files.length} 个文件`;
-    this.tooltip = `${point.label}\n${new Date(point.created).toLocaleString()}${change ? '\n' + change.file : ''}`;
-    if (change) this.command = { command: 'pdfLocal.historyDiff', title: '查看此处本地历史', arguments: [this] };
+    this.description = change ? !change.beforeExists ? 'Added' : !change.afterExists ? 'Deleted' : 'Modified' : `${new Date(point.created).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${point.files.length} ${point.files.length === 1 ? 'file' : 'files'}`;
+    this.tooltip = `${displayHistoryLabel(point.label)}\n${new Date(point.created).toLocaleString()}${change ? '\n' + change.file : ''}`;
+    if (change) this.command = { command: 'pdfLocal.historyDiff', title: 'View Local History Diff', arguments: [this] };
   }
 }
 class HistoryTree implements vscode.TreeDataProvider<HistoryItem> {

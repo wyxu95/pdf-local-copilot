@@ -64,7 +64,7 @@ export async function createTask(root: string, main: string, storage: string): P
 }
 
 export async function refreshTask(task: Task, storage: string): Promise<Task> {
-  if (!inside(path.join(storage, 'tasks'), task.dir) || path.basename(task.dir) !== task.id || task.baseline !== path.join(task.dir, 'baseline') || task.proposal !== path.join(task.dir, 'proposal')) throw new Error('当前会话的任务目录无效。');
+  if (!inside(path.join(storage, 'tasks'), task.dir) || path.basename(task.dir) !== task.id || task.baseline !== path.join(task.dir, 'baseline') || task.proposal !== path.join(task.dir, 'proposal')) throw new Error('The task directory for this session is invalid.');
   const files = await scan(task.root, task.main), round = (task.round || 1) + 1;
   try {
     await fs.mkdir(path.join(task.dir, 'rounds'), { recursive: true }); await fs.copyFile(path.join(task.dir, 'review.json'), path.join(task.dir, 'rounds', `${round - 1}.json`));
@@ -89,7 +89,7 @@ export async function changes(task: Task): Promise<Change[]> {
       let before: Buffer | undefined;
       if (hash) {
         before = await fs.readFile(path.join(task.baseline, file));
-        if (digest(before) !== hash) throw new Error(`旧内容校验失败：${file}`);
+        if (digest(before) !== hash) throw new Error(`Previous content checksum failed: ${file}`);
       }
       result.push({ file, before, after, kind: before === undefined ? 'added' : after === undefined ? 'deleted' : 'modified' });
     }
@@ -107,7 +107,7 @@ export class WorkingTree {
   private constructor(readonly task: Task, private originals: Map<string, Buffer>) {}
   original(file: string) { return this.originals.get(file); }
   static async create(root: string, main: string, sessions?: Task['sessions']) {
-    if (!inside(root, main)) throw new Error('主文件应位于当前项目中。');
+    if (!inside(root, main)) throw new Error('The main file must be inside the current project.');
     const files = await scan(root, path.relative(root, main)), id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
     const dir = path.join(root, '.pdf-local-copilot', 'tasks', id), baseline = path.join(dir, 'before');
     const task: Task = { mode: 'workspace', id, dir, baseline, proposal: root, root, main: path.relative(root, main), sessions: { ...sessions }, originalHashes: Object.fromEntries([...files].map(([file, bytes]) => [file, digest(bytes)])) };
@@ -115,7 +115,7 @@ export class WorkingTree {
     return new WorkingTree(task, files);
   }
   static async open(task: Task) {
-    if (task.mode !== 'workspace' || task.proposal !== task.root || !inside(path.join(task.root, '.pdf-local-copilot', 'tasks'), task.dir) || task.baseline !== path.join(task.dir, 'before')) throw new Error('项目任务记录无效。');
+    if (task.mode !== 'workspace' || task.proposal !== task.root || !inside(path.join(task.root, '.pdf-local-copilot', 'tasks'), task.dir) || task.baseline !== path.join(task.dir, 'before')) throw new Error('Invalid project task data.');
     const ignored = await ignoredFiles(task.root, Object.keys(task.originalHashes || {}));
     const excluded = Object.keys(task.originalHashes || {}).filter(file => !reviewableFile(file, task.main) || ignored.has(file));
     for (const file of excluded) delete task.originalHashes![file];
@@ -133,7 +133,7 @@ export class WorkingTree {
           if (bytes) { originals.set(file, bytes); task.originalHashes![file] = digest(bytes); } else delete task.originalHashes![file];
           task.externalChanges = [...new Set([...(task.externalChanges || []), file])]; rebased = true; continue;
         }
-        if (digest(old) !== hash) throw new Error(`旧内容校验失败：${file}`);
+        if (digest(old) !== hash) throw new Error(`Previous content checksum failed: ${file}`);
         originals.set(file, old);
       }
     }

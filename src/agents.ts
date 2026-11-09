@@ -10,9 +10,9 @@ export function claudeConfigDir(value = '~/.claude') {
 export function configuredAgents(custom: CustomAgent[] = [], commands = { codex: 'codex', claude: 'claude' }): AgentProfile[] {
   const result: AgentProfile[] = [{ id: 'codex', name: 'Codex', type: 'codex', command: commands.codex }, { id: 'claude', name: 'Claude Code', type: 'claude', command: commands.claude, claude_config_dir: claudeConfigDir() }];
   for (const item of custom) {
-    if (!item || typeof item.name !== 'string' || !item.name.trim() || !['codex', 'claude'].includes(item.type)) throw new Error('代理配置需要 name 和 type（codex 或 claude）。');
+    if (!item || typeof item.name !== 'string' || !item.name.trim() || !['codex', 'claude'].includes(item.type)) throw new Error('Agent profiles require name and type (codex or claude).');
     const name = item.name.trim(), id = `custom:${item.id || name}`;
-    if (result.some(profile => profile.id === id || profile.name.toLowerCase() === name.toLowerCase())) throw new Error(`代理名称或标识重复：${name}`);
+    if (result.some(profile => profile.id === id || profile.name.toLowerCase() === name.toLowerCase())) throw new Error(`Duplicate agent name or ID: ${name}`);
     result.push({ id, name, type: item.type, command: item.command || commands[item.type], ...(item.type === 'claude' ? { claude_config_dir: claudeConfigDir(item.claude_config_dir) } : {}) });
   }
   return result;

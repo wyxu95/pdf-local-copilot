@@ -92,7 +92,7 @@ export class LivePreview {
       this.state(this.lastFrame?.header.revision !== this.revision || this.lastFrame?.header.sequence !== this.sequence);
       this.render();
     } else if (v[0] === 'preview-retry' || v[0] === 'preview-cancelled') {
-      this.failAuxiliary(Number(v[1]), new Error('页面正在重新排版，请重试。'));
+      this.failAuxiliary(Number(v[1]), new Error('The page is being rendered again. Please retry.'));
       if (v[1] === this.inFlight) { this.inFlight = 0; this.render(); }
     } else if (v[0] === 'preview-error') {
       this.failAuxiliary(Number(v[1]), new Error(String(v[2])));
@@ -123,14 +123,14 @@ export class LivePreview {
   }
   showPage(page: number) { this.page = Math.max(0, Math.min(10000, Math.floor(page))); this.inFlight = 0; this.render(true); }
   async activatePage(page: number, sequence = this.sequence): Promise<FrameHeader> {
-    if (sequence !== this.sequence || this.externalPending) throw new Error('页面已更新，请重新选择这段内容。');
+    if (sequence !== this.sequence || this.externalPending) throw new Error('The page has changed. Select the passage again.');
     this.showPage(page); const deadline = Date.now() + 15000;
     while (!this.stopped && sequence === this.sequence && Date.now() < deadline) {
       const header = this.lastFrame?.header;
       if (header?.page === page && header.sequence === this.sequence && header.revision === this.revision && !this.inFlight) return header;
       await new Promise(resolve => setTimeout(resolve, 25));
     }
-    throw new Error('正在更新该页，请稍后重试。');
+    throw new Error('The page is updating. Please retry shortly.');
   }
   private cancelInverse() {
     if (!this.inverse) return;
@@ -151,7 +151,7 @@ export class LivePreview {
     this.syncTimer = setTimeout(() => { this.send(['rescan']); this.barrier(); }, 80);
   }
   locate(header: FrameHeader, x: number, y: number): Promise<Location> {
-    if (this.externalPending) return Promise.reject(new Error('请等待当前 PDF 构建完成后再添加批注。'));
+    if (this.externalPending) return Promise.reject(new Error('Wait for the current PDF build to finish before annotating.'));
     if (this.options.pdf) return externalLocation(this.options.pdf, header.page, x, y, path.dirname(this.main));
     const operation = this.inverseTail.catch(() => {}).then(() => this.auxiliary(() => new Promise<Location>((resolve, reject) => {
       if (header.revision !== this.revision || header.sequence !== this.sequence || this.stopped) {
@@ -194,10 +194,10 @@ export class LivePreview {
   }
   private auxiliary<T>(action: () => Promise<T>): Promise<T> {
     const result = this.auxiliaryTail.catch(() => {}).then(async () => {
-      if (this.stopped) throw new Error('预览已关闭。');
+      if (this.stopped) throw new Error('The preview is closed.');
       const deadline = Date.now() + 20000;
       while (this.acknowledged !== this.sequence || this.inFlight || this.inverse) {
-        if (Date.now() > deadline || this.stopped) throw new Error('等待排版完成超时。');
+        if (Date.now() > deadline || this.stopped) throw new Error('Timed out waiting for typesetting.');
         await new Promise(resolve => setTimeout(resolve, 30));
       }
       this.auxiliaryBusy = true;
@@ -209,7 +209,7 @@ export class LivePreview {
     if (this.options.pdf) return externalPosition(this.options.pdf, file, line, path.dirname(this.main));
     return this.auxiliary(() => new Promise<PagePoint>((resolve, reject) => {
       const id = ++this.requestId;
-      const timer = setTimeout(() => { this.searches.delete(id); reject(new Error(`找不到 ${path.basename(file)}:${line} 的排版位置。`)); }, 15000);
+      const timer = setTimeout(() => { this.searches.delete(id); reject(new Error(`No rendered location found for ${path.basename(file)}:${line}.`)); }, 15000);
       this.searches.set(id, { resolve, reject, timer }); this.send(['preview-search', id, this.enginePath(file), Math.max(1, line), this.sequence]);
     }));
   }
@@ -222,14 +222,14 @@ export class LivePreview {
   private exportFrame(page: number, rect?: number[]): Promise<Frame> {
     return this.auxiliary(() => new Promise<Frame>((resolve, reject) => {
       const id = ++this.requestId;
-      const timer = setTimeout(() => { this.exports.delete(id); reject(new Error('导出论文页面超时。')); }, 20000);
+      const timer = setTimeout(() => { this.exports.delete(id); reject(new Error('Timed out exporting the paper page.')); }, 20000);
       this.exports.set(id, { resolve, reject, timer });
       this.send(rect ? ['preview-region', id, page, 1800, this.revision, this.sequence, ...rect] : ['preview-render', id, page, 1400, this.revision, this.sequence]);
     }));
   }
   async stop() {
     this.stopped = true; clearTimeout(this.syncTimer); this.cancelInverse();
-    for (const id of [...this.exports.keys(), ...this.searches.keys()]) this.failAuxiliary(id, new Error('预览已关闭。'));
+    for (const id of [...this.exports.keys(), ...this.searches.keys()]) this.failAuxiliary(id, new Error('The preview is closed.'));
     if (this.child && this.child.exitCode === null && this.child.signalCode === null) {
       const child = this.child;
       await new Promise<void>(resolve => { const timer = setTimeout(resolve, 500); child.once('close', () => { clearTimeout(timer); resolve(); }); child.stdin.end(); });
