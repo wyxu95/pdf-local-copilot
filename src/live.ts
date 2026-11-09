@@ -15,12 +15,13 @@ export interface LiveEvents {
   log(text: string): void;
   error(error: Error): void;
 }
+class PreviewRetry extends Error {}
 
 export async function probe(binary: string) {
-  if (process.platform === 'win32') throw new Error('Open this project using WSL: Reopen Folder in WSL, then install the Linux VSIX in that WSL window. The extension backend and TeXpresso run in WSL.');
+  if (process.platform === 'win32') throw new Error('Open a WSL or Remote SSH window and install the VSIX matching that workspace host. The extension backend, TeXpresso, and agent CLIs run beside the project.');
   return new Promise<void>((resolve, reject) => {
     execFile(binary, ['-capabilities'], { env: localEnvironment(), timeout: 4000, maxBuffer: 65536 }, (error, stdout) => {
-      if (error) { reject(new Error(`Cannot run TeXpresso at ${binary}: ${error.message}. Run npm run native:build, or set pdfLocal.texpressoPath.`)); return; }
+      if (error) { reject(new Error(`Cannot run TeXpresso at ${binary}: ${error.message}. Run PDF Local Copilot: Check Setup to verify the tools and native libraries on the workspace host. Source builds can use npm run native:build, or set pdfLocal.texpressoPath.`)); return; }
       try {
         const capabilities = JSON.parse(stdout);
         if (capabilities.previewProtocol !== 1 || !capabilities.codecs?.includes('png') || !capabilities.synctex) throw new Error('This TeXpresso build needs the headless preview protocol. See README for the pinned build.');
@@ -104,7 +105,7 @@ export class LivePreview {
       this.state(this.lastFrame?.header.revision !== this.revision || this.lastFrame?.header.sequence !== this.sequence);
       this.render();
     } else if (v[0] === 'preview-retry' || v[0] === 'preview-cancelled') {
-      this.failAuxiliary(Number(v[1]), new Error('The page is being rendered again. Please retry.'));
+      this.failAuxiliary(Number(v[1]), new PreviewRetry('The page is being rendered again. Please retry.'));
       if (v[1] === this.inFlight) { this.inFlight = 0; this.render(); }
     } else if (v[0] === 'preview-error') {
       this.failAuxiliary(Number(v[1]), new Error(String(v[2])));
@@ -206,15 +207,24 @@ export class LivePreview {
     for (const map of [this.exports, this.searches]) { const entry = map.get(id); if (entry) { clearTimeout(entry.timer); entry.reject(error); map.delete(id); } }
   }
   private auxiliary<T>(action: () => Promise<T>): Promise<T> {
+    const sequence = this.sequence;
     const result = this.auxiliaryTail.catch(() => {}).then(async () => {
-      if (this.stopped) throw new Error('The preview is closed.');
       const deadline = Date.now() + 20000;
-      while (this.acknowledged !== this.sequence || this.inFlight || this.inverse) {
-        if (Date.now() > deadline || this.stopped) throw new Error('Timed out waiting for typesetting.');
-        await new Promise(resolve => setTimeout(resolve, 30));
+      for (;;) {
+        if (this.stopped) throw new Error('The preview is closed.');
+        if (sequence !== this.sequence) throw new Error('The source changed during preview lookup.');
+        while (this.acknowledged !== this.sequence || this.inFlight || this.inverse) {
+          if (Date.now() > deadline || this.stopped) throw new Error('Timed out waiting for typesetting.');
+          await new Promise(resolve => setTimeout(resolve, 30));
+        }
+        if (sequence !== this.sequence) throw new Error('The source changed during preview lookup.');
+        this.auxiliaryBusy = true;
+        try { return await action(); }
+        catch (error) {
+          if (!(error instanceof PreviewRetry) || Date.now() > deadline) throw error;
+          await new Promise(resolve => setTimeout(resolve, 30));
+        } finally { this.auxiliaryBusy = false; this.render(true); }
       }
-      this.auxiliaryBusy = true;
-      try { return await action(); } finally { this.auxiliaryBusy = false; this.render(true); }
     });
     this.auxiliaryTail = result; return result;
   }

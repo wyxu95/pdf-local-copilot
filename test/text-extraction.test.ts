@@ -15,18 +15,20 @@ Effective efficient office difficult affinity float conflict structure attractiv
 \textit{${title}}
 \textbf{${title}}
 \end{document}`);
-  const build = new BuildManager(root, main, engine, () => {}); let preview: LivePreview | undefined;
+  let diagnostics = '';
+  const build = new BuildManager(root, main, engine, text => { diagnostics += text; }); let preview: LivePreview | undefined;
   try {
     const result = await build.build();
-    preview = new LivePreview(path.resolve('native/texpresso'), root, main, { frame: () => {}, state: () => {}, log: () => {}, error: error => { throw error; } }, { includeDirectories: [build.directory], pdf: engine === 'xelatex' ? undefined : result.pdf });
+    preview = new LivePreview(path.resolve('native/texpresso'), root, main, { frame: () => {}, state: () => {}, log: text => { diagnostics += text; }, error: error => { throw error; } }, { includeDirectories: [build.directory], pdf: engine === 'xelatex' ? undefined : result.pdf });
     await preview.start(); const deadline = Date.now() + 20000;
     while (!preview.snapshot().complete) { assert.ok(Date.now() < deadline, 'Rendering timed out'); await new Promise(resolve => setTimeout(resolve, 30)); }
     const { header } = await preview.readPage(0), characters = header.characters!, text = characters.map(c => String.fromCodePoint(c[0])).join('').replace(/\s+/g, ' ');
-    assert.equal(text.split(title).length - 1, 3, text);
+    assert.equal(text.split(title).length - 1, 3, 'Extracted text: ' + JSON.stringify(text));
     assert.ok(text.includes('Effective efficient office difficult affinity float conflict structure attractive.'), text);
     assert.ok(!text.includes('\u0000') && !text.includes('�'), text);
     const glyphs = characters.filter(c => c[0] !== 10), index = glyphs.map(c => String.fromCodePoint(c[0])).join('').indexOf('Attack');
     const first = glyphs[index + 1], second = glyphs[index + 2];
     assert.ok(first[3] > first[1] && second[3] > second[1] && first[3] <= second[1] + .01, 'The tt ligature has overlapping or empty selection boxes');
-  } finally { await preview?.stop(); await build.stop(); await fs.rm(temporary, { recursive: true, force: true }); }
+  } catch (error) { console.error(diagnostics); throw error; }
+  finally { await preview?.stop(); await build.stop(); await fs.rm(temporary, { recursive: true, force: true }); }
 });

@@ -64,5 +64,6 @@ for (const engine of ['xelatex', 'pdflatex'] as const) test(`reference links res
       if (kind === 'Table') { assert.equal(target.page, 1); assert.ok(text.includes('Sample table caption') && text.includes('Alpha') && text.includes('Beta'), text); }
     }
     assert.deepEqual([...kinds].sort(), ['Figure', 'Reference', 'Table']);
-  } finally { await preview?.stop(); await build.stop(); await fs.rm(temp, { recursive: true, force: true }); }
+  } catch (error) { console.error((error as { output?: string }).output || error); throw error; }
+  finally { await preview?.stop(); await build.stop(); await fs.rm(temp, { recursive: true, force: true }); }
 });

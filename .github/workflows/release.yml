@@ -72,6 +72,9 @@ jobs:
         run: |
           sudo apt-get update
           cat scripts/linux-build-packages.txt scripts/linux-test-packages.txt | xargs sudo -E apt-get install -y --no-install-recommends
+      - name: Install pinned test fonts
+        if: runner.os == 'Linux'
+        run: bash scripts/install-test-fonts.sh
       - run: npm ci
       - run: npm run check
       - run: npm run native:build
