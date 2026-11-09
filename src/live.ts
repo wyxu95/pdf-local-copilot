@@ -230,7 +230,7 @@ export class LivePreview {
     if (cached && cached.header.revision === this.revision && cached.header.sequence === this.sequence) return Promise.resolve(cached);
     return this.exportFrame(page).then(frame => { this.cache.set(page, frame); while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value!); return frame; });
   }
-  capture(page: number, rect: number[]): Promise<Frame> { return this.exportFrame(page, rect); }
+  capture(page: number, rect: number[], width = 1800): Promise<Frame> { return this.exportFrame(page, rect, width); }
   async reference(link: PdfLink) {
     if (!link.uri.startsWith('#')) throw new Error('Only internal document references have previews.');
     const sequence = this.sequence, name = link.target ? '' : link.uri.slice(1);
@@ -248,12 +248,12 @@ export class LivePreview {
     if (name && !destination) throw new Error('The reference target has no preview coordinates.');
     return { frame, target: { page, name: destination?.name || '', x: destination?.x ?? link.target!.x, y: destination?.y ?? link.target!.y } };
   }
-  private exportFrame(page: number, rect?: number[]): Promise<Frame> {
+  private exportFrame(page: number, rect?: number[], width = 1400): Promise<Frame> {
     return this.auxiliary(() => new Promise<Frame>((resolve, reject) => {
       const id = ++this.requestId;
       const timer = setTimeout(() => { this.exports.delete(id); reject(new Error('Timed out exporting the paper page.')); }, 20000);
       this.exports.set(id, { resolve, reject, timer });
-      this.send(rect ? ['preview-region', id, page, 1800, this.revision, this.sequence, ...rect] : ['preview-render', id, page, 1400, this.revision, this.sequence]);
+      this.send(rect ? ['preview-region', id, page, width, this.revision, this.sequence, ...rect] : ['preview-render', id, page, width, this.revision, this.sequence]);
     }));
   }
   async stop() {

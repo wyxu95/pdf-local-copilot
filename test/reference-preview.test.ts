@@ -49,6 +49,10 @@ for (const engine of ['xelatex', 'pdflatex'] as const) test(`reference links res
       const { frame, target } = await preview.reference(link), kind = referenceKind(target.name); kinds.add(kind);
       const image = PNG.sync.read(frame.bytes), raster = { width: image.width, height: image.height, data: new Uint8ClampedArray(image.data) };
       const bounds = referencePreviewBounds(frame.header, target, kind, raster), text = referenceLabel(frame.header, bounds);
+      const detail = await preview.capture(target.page, bounds, 2400), pixels = PNG.sync.read(detail.bytes);
+      assert.ok(detail.header.bounds.every((value, i) => Math.abs(value - bounds[i]) < .01), 'Detail render changed the preview crop');
+      assert.ok(pixels.width > 2300, 'The preview reused the low-resolution full-page bitmap');
+      assert.ok(pixels.width / (bounds[2] - bounds[0]) > image.width / (frame.header.bounds[2] - frame.header.bounds[0]) * 2, 'The detail region did not gain pixel density');
       if (kind === 'Reference') {
         const number: string = target.name === 'cite.first' ? '6' : '11', title = number === '6' ? 'First reference title' : 'Second reference title';
         assert.equal(target.page, 2); assert.equal(referenceLabel(first.header, link.bounds), number);

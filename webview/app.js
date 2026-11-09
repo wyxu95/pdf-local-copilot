@@ -182,6 +182,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     for (const record of state.rows.values()) record.paper.classList.remove('reference-link-hover');
   }
   function referencePayload(record, hit) { return { requestId: ++referenceRequest, session: record.frame.session, sequence: record.frame.header.sequence, revision: record.frame.header.revision, page: record.page, linkIndex: hit.index }; }
+  function referenceScale(record) { return record.surface.getBoundingClientRect().width / (record.bounds[2] - record.bounds[0]); }
   function positionReference() {
     if (!hoveredReference || referenceCard.hidden) return;
     const record = hoveredReference.record, b = record.bounds, surface = record.surface.getBoundingClientRect(), outer = viewport.getBoundingClientRect(), rect = hoveredReference.hit.link.bounds;
@@ -196,7 +197,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     const hit = referenceLinkAt(record.frame.header, ...point(event, record));
     if (!hit) { hideReferenceAfterLeave(); return; }
     clearTimeout(referenceHideTimer); record.paper.classList.add('reference-link-hover');
-    const key = `${version(record.frame)}:${record.page}:${hit.index}`;
+    const key = `${version(record.frame)}:${record.page}:${hit.index}:${Math.ceil(referenceScale(record) * window.devicePixelRatio * 1000)}`;
     if (hoveredReference?.key === key) return;
     dismissReference();
     hoveredReference = { record, hit, key, payload: referencePayload(record, hit), label: referenceLabel(record.frame.header, hit.link.bounds) };
@@ -214,8 +215,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     await image.decode(); if (hoveredReference !== current) return;
     const label = hoveredReference.label.match(/\[[^\]]+\]|\d+[a-z]?(?:[–−-]\d+[a-z]?)?/i)?.[0] || hoveredReference.label.replace(/[,.;:\s]+$/, '');
     referenceHeading.textContent = `${preview.kind}${label ? ' ' + label : ''} · Page ${preview.target.page + 1}`;
-    const record = hoveredReference.record, scale = record.surface.getBoundingClientRect().width / (record.bounds[2] - record.bounds[0]);
-    hoveredReference.width = (preview.bounds[2] - preview.bounds[0]) * scale;
+    hoveredReference.width = (preview.bounds[2] - preview.bounds[0]) * referenceScale(hoveredReference.record);
     image.style.width = `${hoveredReference.width}px`;
     referenceContent.replaceChildren(image); referenceCard.hidden = false; positionReference();
   }
@@ -227,10 +227,14 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     const canvas = document.createElement('canvas'); canvas.width = Math.min(900, image.naturalWidth); canvas.height = Math.round(canvas.width * image.naturalHeight / image.naturalWidth);
     const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const kind = referenceKind(message.target.name), bounds = referencePreviewBounds(message.header, message.target, kind, { width: canvas.width, height: canvas.height, data: ctx.getImageData(0, 0, canvas.width, canvas.height).data });
-    const page = message.header.bounds, sx = image.naturalWidth / (page[2] - page[0]), sy = image.naturalHeight / (page[3] - page[1]);
-    const crop = document.createElement('canvas'); crop.width = Math.max(1, Math.ceil((bounds[2] - bounds[0]) * sx)); crop.height = Math.max(1, Math.ceil((bounds[3] - bounds[1]) * sy));
-    const out = crop.getContext('2d'); out.fillStyle = 'white'; out.fillRect(0, 0, crop.width, crop.height); out.drawImage(image, (bounds[0] - page[0]) * sx, (bounds[1] - page[1]) * sy, crop.width, crop.height, 0, 0, crop.width, crop.height);
-    const preview = { kind, target: message.target, bounds, image: crop.toDataURL('image/png') }; referenceCache.set(current.key, preview);
+    current.kind = kind;
+    const width = Math.min(4096, Math.max(128, Math.ceil((bounds[2] - bounds[0]) * referenceScale(current.record) * window.devicePixelRatio)));
+    send({ ...current.payload, type: 'referenceImage', bounds, width });
+  }
+  async function renderReferenceImage(message) {
+    const current = hoveredReference; if (!current || current.payload.requestId !== message.requestId) return;
+    if (message.error) { referenceContent.replaceChildren(make('p', '', message.error)); positionReference(); return; }
+    const preview = { kind: current.kind, target: message.target, bounds: message.header.bounds, image: `data:${message.header.mime};base64,${message.data}` }; referenceCache.set(current.key, preview);
     if (referenceCache.size > 8) referenceCache.delete(referenceCache.keys().next().value); await showReference(preview);
   }
   function drawMarks(record) {
@@ -688,6 +692,8 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
       pump();
     } else if (message.type === 'referencePreview') {
       void renderReference(message).catch(error => { if (hoveredReference?.payload.requestId === message.requestId) { referenceContent.replaceChildren(make('p', '', String(error))); positionReference(); } });
+    } else if (message.type === 'referenceImage') {
+      void renderReferenceImage(message).catch(error => { if (hoveredReference?.payload.requestId === message.requestId) { referenceContent.replaceChildren(make('p', '', String(error))); positionReference(); } });
     } else if (message.type === 'referencePosition') {
       if (message.side === state.side && message.session === state.meta[state.side]?.session) {
         const target = message.target; dismissReference(); state.pendingReveal = { page: target.page, rect: [target.x, target.y, target.x + 1, target.y + 12] }; ensureRows(target.page + 1); enqueue(state.side, target.page); reveal();

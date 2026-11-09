@@ -68,6 +68,8 @@ rendered page. Editing or rebuilding the paper refreshes the preview cache.
 Each number in a grouped citation has its own target. Preview content keeps the
 paper's current display scale; a full-width figure or reference occupies its
 rendered line width. Wide content scrolls horizontally within a narrow editor.
+The preview region is rendered again at the display's pixel density, including
+Retina screens. Zooming creates a sharper render at the new size.
 
 ## Build and install
 
@@ -95,7 +97,7 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.7.1.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.2.vsix
 ```
 
 Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
@@ -196,7 +198,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.1.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.2.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.

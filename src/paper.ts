@@ -97,11 +97,11 @@ export class Paper {
       if (m.type === 'requestPage') { void this.sendPage(panel, m.side === 'before' || m.side === 'after' ? m.side : side, m.page, m.session); return; }
       if (m.type === 'visiblePage' && Number.isInteger(m.page) && m.page >= 0 && m.page <= 10000) { if (panel.active || panel === this.panel && panel.visible) { this.currentSide = side; this.page = m.page; this.ui.activate(this); } return; }
       if (m.type === 'sourceJump') { void this.jumpToSource(m, side).catch(this.ui.report); return; }
-      if (m.type === 'referencePreview' || m.type === 'referenceJump') {
+      if (m.type === 'referencePreview' || m.type === 'referenceImage' || m.type === 'referenceJump') {
         const generation = ++this.referenceGeneration;
         void this.referenceAction(m, panel, side, generation).catch(error => {
           if (m.type === 'referenceJump') this.ui.report(error);
-          else if (generation === this.referenceGeneration) this.post(panel, { type: 'referencePreview', requestId: m.requestId, error: error instanceof Error ? error.message : String(error) });
+          else if (generation === this.referenceGeneration) this.post(panel, { type: m.type, requestId: m.requestId, error: error instanceof Error ? error.message : String(error) });
         }); return;
       }
       if (m.type === 'chatSend') { void this.sendChat(m.instruction, m.agent, m.ids, m.options).catch(e => this.both({ type: 'chatError', message: e instanceof Error ? e.message : String(e) })); return; }
@@ -170,7 +170,7 @@ export class Paper {
     try { const frame = await preview.readPage(page); if (session === this.previewSessions[side]) this.post(panel, { type: 'pageFrame', side, session, header: frame.header, data: frame.bytes.toString('base64') }); }
     catch (e) { if (session === this.previewSessions[side]) this.post(panel, { type: 'pageError', side, session, page, message: e instanceof Error ? e.message : String(e) }); }
   }
-  private async referenceAction(message: { type: string; requestId: number; session: number; sequence: number; revision: number; page: number; linkIndex: number }, panel: vscode.WebviewPanel, side: 'before' | 'after', generation: number) {
+  private async referenceAction(message: { type: string; requestId: number; session: number; sequence: number; revision: number; page: number; linkIndex: number; bounds?: number[]; width?: number }, panel: vscode.WebviewPanel, side: 'before' | 'after', generation: number) {
     const preview = side === 'before' ? this.before : this.after;
     if (!preview || message.session !== this.previewSessions[side] || !Number.isInteger(message.page) || message.page < 0 || message.page > 10000 || !Number.isInteger(message.linkIndex)) return;
     const source = await preview.readPage(message.page);
@@ -180,6 +180,15 @@ export class Paper {
     if (!link?.uri.startsWith('#')) return;
     const result = await preview.reference(link);
     if (generation !== this.referenceGeneration) return;
+    if (message.type === 'referenceImage') {
+      const bounds = message.bounds, page = result.frame.header.bounds;
+      if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite) || !Number.isInteger(message.width) || message.width! < 1 || message.width! > 4096) return;
+      const rect = [Math.max(page[0], bounds[0]), Math.max(page[1], bounds[1]), Math.min(page[2], bounds[2]), Math.min(page[3], bounds[3])];
+      if (rect[2] <= rect[0] || rect[3] <= rect[1]) return;
+      const frame = await preview.capture(result.target.page, rect, message.width);
+      if (generation === this.referenceGeneration) this.post(panel, { type: 'referenceImage', requestId: message.requestId, target: result.target, header: frame.header, data: frame.bytes.toString('base64') });
+      return;
+    }
     if (message.type === 'referenceJump') {
       this.page = result.target.page; preview.showPage(result.target.page); this.ui.refresh();
       this.post(panel, { type: 'referencePosition', side, session: message.session, target: result.target });
