@@ -17,6 +17,7 @@ export interface LiveEvents {
 }
 
 export async function probe(binary: string) {
+  if (process.platform === 'win32') throw new Error('Open this project using WSL: Reopen Folder in WSL, then install the Linux VSIX in that WSL window. The extension backend and TeXpresso run in WSL.');
   return new Promise<void>((resolve, reject) => {
     execFile(binary, ['-capabilities'], { env: localEnvironment(), timeout: 4000, maxBuffer: 65536 }, (error, stdout) => {
       if (error) { reject(new Error(`Cannot run TeXpresso at ${binary}: ${error.message}. Run npm run native:build, or set pdfLocal.texpressoPath.`)); return; }

@@ -1,0 +1,8 @@
+latexmk
+texlive-xetex
+texlive-luatex
+texlive-latex-extra
+texlive-fonts-extra
+texlive-bibtex-extra
+fonts-linuxlibertine
+biber

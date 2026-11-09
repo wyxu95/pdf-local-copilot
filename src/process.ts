@@ -3,8 +3,9 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 export function localEnvironment() {
-  const extra = [path.join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/Library/TeX/texbin'];
-  return { ...process.env, PATH: [...new Set([...(process.env.PATH || '').split(path.delimiter), ...extra])].join(path.delimiter) };
+  const local = path.join(homedir(), '.local/bin'), inherited = (process.env.PATH || '').split(path.delimiter);
+  const paths = process.platform === 'darwin' ? [...inherited, local, '/opt/homebrew/bin', '/usr/local/bin', '/Library/TeX/texbin'] : [local, ...inherited, '/usr/local/bin'];
+  return { ...process.env, PATH: [...new Set(paths)].join(path.delimiter) };
 }
 const shutdowns = new WeakMap<ChildProcess, Promise<void>>();
 export function terminate(child: ChildProcess): Promise<void> {

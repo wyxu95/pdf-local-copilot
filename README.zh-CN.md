@@ -12,17 +12,25 @@
 
 ## 安装与打开
 
-先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.7.3.vsix`。
+从 [Releases](https://github.com/wyxu95/pdf-local-copilot/releases/latest) 的 **Assets** 下载与插件后端匹配的 VSIX，通过 **Extensions: Install from VSIX…** 安装。
+
+| 项目所在的后端 | 安装包后缀 |
+| --- | --- |
+| Apple Silicon Mac | `darwin-arm64.vsix` |
+| WSL2／Ubuntu 24.04 x86_64 | `linux-x64.vsix` |
+| WSL2／Ubuntu 24.04 aarch64 | `linux-arm64.vsix` |
+
+Windows 上继续使用 Windows 版 VS Code。先用 **WSL: Reopen Folder in WSL** 或 **Remote-SSH: Connect to Host…** 打开项目，再在该远程窗口安装对应后端的 VSIX。TeXpresso、TeX、Codex／Claude 和它们的登录、配置目录都在项目所在的后端；PDF、聊天和编辑器界面显示在 Windows。
+
+运行 **PDF Local Copilot: Check Setup** 可查看后端系统、连接方式和工具检测结果。详细步骤见 [Windows／远程安装说明](docs/windows-remote.md)。
+
+也可以按 [源码构建步骤](README.md#build-and-install) 构建当前平台的包，例如 Mac ARM64：
 
 ```sh
-code --install-extension artifacts/pdf-local-copilot-0.7.3.vsix
+code --install-extension artifacts/pdf-local-copilot-0.8.0-darwin-arm64.vsix
 ```
 
-也可以在 [Releases](https://github.com/wyxu95/pdf-local-copilot/releases/latest)
-的 **Assets** 中直接下载 `.vsix`，通过 **Extensions: Install from VSIX…** 安装。
-推送与 `package.json` 版本一致的标签（例如 `v0.7.3`）会触发 Release 工作流，
-在 macOS ARM64 上检查类型、构建原生引擎并将安装包直接发布到 Releases。
-运行插件的机器仍需安装英文 README 中列出的 Homebrew 库和 TeX 环境。
+推送与 `package.json` 版本一致的标签（例如 `v0.8.0`）会构建三种平台的包，并在所有目标成功后发布到 Releases。运行插件的后端仍需安装相应的原生库和 TeX 环境。
 
 打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
 
@@ -157,7 +165,7 @@ npm run check
 npm test
 npm run test:ui
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.3.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.8.0-darwin-arm64.vsix npm run test:ui
 ```
 
 UI 测试使用隔离的 VS Code 配置与真实 TeXpresso / TeX Live，覆盖真实目录写入、差异备份、旧任务迁移、TeX Diff 与 PDF 联动、其他文本 Diff、批注来源／清理／追问、整轮撤回和连续会话。截图在 `output/playwright/`。

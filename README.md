@@ -74,11 +74,13 @@ Retina screens. Zooming creates a sharper render at the new size.
 
 ## Build and install
 
-The current package target is **macOS Apple Silicon**. Native binaries are built on the machine where they will run and link against that machine's libraries. The Git repository contains the extension source and the TeXpresso patches; `vendor/`, `native/`, and generated VSIX files are local build outputs.
+Release packages target **macOS Apple Silicon**, **Ubuntu 24.04 x64**, and **Ubuntu 24.04 ARM64**. Windows VS Code uses its WSL2 or Remote SSH workspace host to run the backend. Choose the VSIX for that host; the PDF, chat, and native VS Code components remain in the Windows window. See the [Windows and remote installation guide](docs/windows-remote.md).
+
+Native binaries link against the target host's libraries. The Git repository contains the extension source and the TeXpresso patches; `vendor/`, `native/`, and generated VSIX files are local build outputs.
 
 ### Prerequisites
 
-- VS Code 1.96 or later, Node.js 22 or later, npm, Git, and a C/C++ toolchain with Make.
+- VS Code 1.96 or later and Git on the workspace host. Source builds also use Node.js 22 or later, npm, and a C/C++ toolchain with Make.
 - TeX Live or MacTeX, including `latexmk`, `synctex`, `kpsewhich`, and the engines/packages used by your paper. Bibliography builds use the installed BibTeX or Biber.
 - Codex CLI or Claude Code CLI, installed and authenticated independently.
 - TeXpresso's native dependencies. On macOS, the tested dependency setup uses Homebrew:
@@ -89,6 +91,8 @@ brew install mupdf-tools sdl2 pkgconf harfbuzz freetype graphite2 fontconfig lib
 
 The existing native build was validated with MuPDF 1.25.2 and ICU 78.3. See the pinned upstream [build instructions](https://github.com/DominikPeters/texpresso/blob/df8b0941ef19b36377014d18a9a264f3591280b1/INSTALL.md) for dependency details and other environments.
 
+Ubuntu 24.04 runtime dependencies and installation steps are in the [remote guide](docs/windows-remote.md). For a source build, install the packages listed in `scripts/linux-build-packages.txt` with your system package manager.
+
 ### Build a VSIX
 
 ```sh
@@ -98,20 +102,23 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.7.3.vsix
+code --install-extension artifacts/pdf-local-copilot-0.8.0-darwin-arm64.vsix
 ```
 
 ### Download a release
 
 Open [Releases](https://github.com/wyxu95/pdf-local-copilot/releases/latest), download
 the `.vsix` under **Assets**, and install it with **Extensions: Install from VSIX…**.
-Release packages target macOS Apple Silicon. Install the Homebrew and TeX
-dependencies listed above on the machine running the extension.
+Choose `darwin-arm64`, `linux-x64`, or `linux-arm64` to match the workspace host.
+Connect the window to WSL or SSH before installing a remote package. Run
+**PDF Local Copilot: Check Setup** to inspect the backend host and its tools.
 
-Pushing a version tag matching `package.json`, such as `v0.7.3`, runs the
+Pushing a version tag matching `package.json`, such as `v0.8.0`, runs the
 [Release workflow](.github/workflows/release.yml): it checks TypeScript, builds
-the native engine, and publishes the VSIX directly to GitHub Releases.
-Release notes come from `docs/releases/<tag>.md` when available.
+the native engines, tests the Linux backends, and uploads each VSIX directly to
+a draft GitHub Release. The release becomes public after every target succeeds.
+Release notes come from `docs/releases/<tag>.md` when available. Release-candidate
+tags containing `-rc.` keep their release in draft for validation.
 
 Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
 
@@ -212,7 +219,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.3.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.8.0-darwin-arm64.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.

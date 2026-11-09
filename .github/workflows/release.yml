@@ -8,10 +8,46 @@ permissions:
   contents: write
 
 jobs:
-  publish:
-    name: Build and publish macOS ARM64 VSIX
-    runs-on: macos-15
-    timeout-minutes: 30
+  prepare:
+    name: Prepare draft release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e "if (process.env.RELEASE_TAG !== 'v' + require('./package.json').version) throw new Error('The tag must match package.json version.')"
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            notes=(--generate-notes)
+            release_notes="docs/releases/$RELEASE_TAG.md"
+            if [ -f "$release_notes" ]; then
+              notes=(--notes-file "$release_notes")
+            fi
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "PDF Local Copilot $RELEASE_TAG" "${notes[@]}"
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -20,31 +56,44 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Verify platform and release version
+      - name: Verify target architecture
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          node -e "if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('This package requires a macOS ARM64 runner.'); if (process.env.RELEASE_TAG !== 'v' + require('./package.json').version) throw new Error('The tag must match package.json version.')"
-      - name: Install native build dependencies
+          BUILD_TARGET: ${{ matrix.target }}
+        run: node -e "if (process.env.BUILD_TARGET !== process.platform + '-' + process.arch) throw new Error('The runner does not match the package target.')"
+      - name: Install macOS native build dependencies
+        if: runner.os == 'macOS'
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install mupdf-tools sdl2 pkgconf harfbuzz freetype graphite2 fontconfig libpng icu4c@78 re2c
+      - name: Install Linux build and integration-test dependencies
+        if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          cat scripts/linux-build-packages.txt scripts/linux-test-packages.txt | xargs sudo -E apt-get install -y --no-install-recommends
       - run: npm ci
       - run: npm run check
       - run: npm run native:build
+      - name: Verify Linux rendering, agents, synchronization and review
+        if: runner.os == 'Linux'
+        run: npm test
       - run: npm run package
-      - name: Publish release and VSIX
+      - name: Upload VSIX directly to draft release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" artifacts/*.vsix --clobber
-          else
-            notes=(--generate-notes)
-            release_notes="docs/releases/$RELEASE_TAG.md"
-            if [ -f "$release_notes" ]; then
-              notes=(--notes-file "$release_notes")
-            fi
-            gh release create "$RELEASE_TAG" artifacts/*.vsix --verify-tag --title "PDF Local Copilot $RELEASE_TAG" "${notes[@]}"
-          fi
+        run: gh release upload "$RELEASE_TAG" artifacts/*.vsix --clobber
+
+  publish:
+    name: Publish complete release
+    needs: build
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Publish release after all packages succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest

@@ -11,6 +11,7 @@ import type { Task } from './project';
 import { HistoryFiles } from './history-files';
 import type { HistoryPoint, HistoryChange } from './local-history';
 import { displayHistoryLabel } from './history-label';
+import { inspectTools } from './setup';
 
 let output: vscode.OutputChannel, status: vscode.StatusBarItem;
 let diagnostics: vscode.DiagnosticCollection, active: Paper | undefined;
@@ -31,6 +32,23 @@ export function activate(context: vscode.ExtensionContext) {
     notesView.onDidChangeCheckboxState(e => { for (const [item, checked] of e.items) item.paper.selectNote(item.note.id, checked === vscode.TreeItemCheckboxState.Checked); }),
     changesView.onDidChangeCheckboxState(e => { for (const [item, checked] of e.items) item.paper.selectReviewEdits(item.edit?.id || item.file.file, checked === vscode.TreeItemCheckboxState.Checked, !item.edit); }));
   const register = (name: string, action: (arg?: any) => unknown) => context.subscriptions.push(vscode.commands.registerCommand(`pdfLocal.${name}`, async arg => { try { return await action(arg); } catch (e) { report(e); } }));
+  const setupOutput = vscode.window.createOutputChannel('PDF Local Copilot Setup'); context.subscriptions.push(setupOutput);
+  register('checkSetup', async () => {
+    setupOutput.clear(); setupOutput.show(true);
+    setupOutput.appendLine(`Backend: ${process.platform}-${process.arch}\nConnection: ${vscode.env.remoteName || 'local'}\nExtension: ${context.extensionPath}`);
+    if (process.platform === 'win32') { setupOutput.appendLine('Open a WSL or Remote SSH window and install the VSIX matching that host. TeXpresso and the agent CLIs run on the workspace host.'); return; }
+    const configuration = vscode.workspace.getConfiguration('pdfLocal');
+    const tools = await inspectTools([
+      { name: 'TeXpresso', command: configuration.get<string>('texpressoPath') || path.join(context.extensionPath, 'native', 'texpresso'), args: ['-capabilities'] },
+      { name: 'latexmk', command: 'latexmk', args: ['-v'] },
+      { name: 'SyncTeX', command: 'synctex', args: ['--version'] },
+      { name: 'TeX Live', command: 'kpsewhich', args: ['--version'] },
+      { name: 'Codex', command: configuration.get<string>('codexPath') || 'codex', args: ['--version'] },
+      { name: 'Claude', command: configuration.get<string>('claudePath') || 'claude', args: ['--version'] }
+    ]);
+    for (const tool of tools) setupOutput.appendLine(`\n${tool.ok ? 'OK' : 'MISSING'} ${tool.name}: ${tool.command}\n${tool.detail}`);
+    setupOutput.appendLine('\nChoose Codex or Claude; only your selected agent is required. Install and authenticate tools on this backend host. Agent config directories and command paths also belong to this host.');
+  });
   let routing = Promise.resolve();
   const routeTabs = (tabs: readonly vscode.Tab[]) => {
     for (const tab of new Set(tabs)) routing = routing.then(async () => {
