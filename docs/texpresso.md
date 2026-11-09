@@ -1,6 +1,6 @@
 # TeXpresso source integration
 
-The extension uses a pinned source checkout and three small patches, managed by
+The extension uses a pinned source checkout and four small patches, managed by
 [`scripts/build-native.mjs`](../scripts/build-native.mjs).
 
 ## Source identity
@@ -9,17 +9,17 @@ The extension uses a pinned source checkout and three small patches, managed by
 - Headless/VS Code base: <https://github.com/DominikPeters/texpresso/tree/vscode>
 - Pinned revision: `df8b0941ef19b36377014d18a9a264f3591280b1`
 - Local source directory: `vendor/texpresso/`
-- Local changes: [`scripts/texpresso-text-layer.patch`](../scripts/texpresso-text-layer.patch), [`scripts/texpresso-pdf-links.patch`](../scripts/texpresso-pdf-links.patch), and [`scripts/texpresso-link-geometry.patch`](../scripts/texpresso-link-geometry.patch)
+- Local changes: [`scripts/texpresso-text-layer.patch`](../scripts/texpresso-text-layer.patch), [`scripts/texpresso-pdf-links.patch`](../scripts/texpresso-pdf-links.patch), [`scripts/texpresso-link-geometry.patch`](../scripts/texpresso-link-geometry.patch), and [`scripts/texpresso-unicode.patch`](../scripts/texpresso-unicode.patch)
 
-The text-layer patch adds 39 lines in three files. The PDF-links patch extends the PDF backend:
+The patches extend character extraction, link metadata, and XDV text decoding:
 
 | Upstream file | Addition |
 | --- | --- |
 | `src/frontend/renderer.h` | Declares `txp_renderer_characters` |
-| `src/frontend/renderer.c` | Exports character code points and page-space rectangles, bounded to 12,000 entries per page |
+| `src/frontend/renderer.c` | Exports character code points and page-space rectangles, bounded to 12,000 entries per page, and distributes a ligature's advance across its letters |
 | `src/frontend/preview.c` | Adds the character array to full-page preview responses |
 | `src/frontend/engine_pdf.c` | Exports bounded link rectangles, resolved internal targets, and named destination coordinates through MuPDF |
-| `src/dvi/dvi_prim.c` | Extracts link regions from the linked text's character quads, separating numbers in grouped citations |
+| `src/dvi/dvi_prim.c` | Extracts tight link regions and decodes glyph names such as `t_t` and `f_f_i` as multi-letter Unicode sequences while drawing each glyph once |
 
 The driver, headless protocol, incremental engine, and XeTeX modifications come
 from the pinned upstream source. This extension adds selection geometry and the
@@ -39,6 +39,7 @@ git -C vendor/texpresso diff --stat
 git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-text-layer.patch
 git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-pdf-links.patch
 git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-link-geometry.patch
+git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-unicode.patch
 native/texpresso -capabilities
 ```
 

@@ -11,6 +11,9 @@ The MIT patch in `scripts/texpresso-pdf-links.patch` exports PDF link and
 destination metadata for reference hover previews.
 The MIT patch in `scripts/texpresso-link-geometry.patch` extracts tight DVI link
 regions from character geometry for individual citation-number hit testing.
+The MIT patch in `scripts/texpresso-unicode.patch` restores Unicode text for XDV
+ligature glyph names. The text-layer patch also exports individual selection
+rectangles for the letters of a ligature.
 
 Native builds link against libraries installed on the build host, including
 MuPDF (AGPL-3.0-or-later or a commercial license), SDL2 (zlib), HarfBuzz (MIT),

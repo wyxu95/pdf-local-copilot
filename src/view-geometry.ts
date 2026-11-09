@@ -124,13 +124,20 @@ export function pageText(header: FrameHeader, omitMargin = false) {
 export function quoteGeometry(header: FrameHeader, quote: string, near?: number[]): number[][] | undefined {
   const target = quote.replaceAll('\u0000', '�').normalize('NFKC').replace(/(?<=\p{L})-\s*\n\s*(?=\p{L})/gu, '').replace(/\s+/g, ' ').trim(); if (!target) return;
   const { text, indices } = pageText(header), chars = header.characters || [];
-  let best = -1, distance = Infinity;
+  let best = -1, length = target.length, distance = Infinity;
   for (let i = text.indexOf(target); i >= 0; i = text.indexOf(target, i + 1)) {
     const c = chars[indices[i]], d = near ? Math.hypot(c[1] - near[0], c[2] - near[1]) : i;
     if (d < distance) { best = i; distance = d; }
   }
+  if (best < 0 && target.includes('�')) {
+    const pattern = target.split('�').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(?:ff[il]?|fi|fl|ft|st|tt|Th)');
+    for (const match of text.matchAll(new RegExp(pattern, 'gu'))) {
+      const c = chars[indices[match.index]], d = near ? Math.hypot(c[1] - near[0], c[2] - near[1]) : match.index;
+      if (d < distance) { best = match.index; length = match[0].length; distance = d; }
+    }
+  }
   if (best < 0) return;
-  return textRangeGeometry(header, indices[best], indices[best + target.length - 1]);
+  return textRangeGeometry(header, indices[best], indices[best + length - 1]);
 }
 export function textRangeGeometry(header: FrameHeader, start: number, end: number, omitMargin = false): number[][] | undefined {
   const chars = header.characters || [], margin = omitMargin ? marginGlyphs(chars) : new Set<number>();

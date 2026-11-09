@@ -12,11 +12,17 @@
 
 ## 安装与打开
 
-先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.7.2.vsix`。
+先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.7.3.vsix`。
 
 ```sh
-code --install-extension artifacts/pdf-local-copilot-0.7.2.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.3.vsix
 ```
+
+也可以在 [Actions → CI](https://github.com/wyxu95/pdf-local-copilot/actions/workflows/ci.yml)
+中打开成功的运行，从 **Artifacts** 下载 **pdf-local-copilot-darwin-arm64**，
+解压后通过 **Extensions: Install from VSIX…** 安装其中的 `.vsix`。
+推送 `main`、PR 和手动 **Run workflow** 都会执行检查，并在 macOS ARM64 上构建原生引擎和安装包。
+运行插件的机器仍需安装英文 README 中列出的 Homebrew 库和 TeX 环境。
 
 打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
 
@@ -32,6 +38,7 @@ code --install-extension artifacts/pdf-local-copilot-0.7.2.vsix
 - 页面适配可用宽度并裁掉左右空白，保留图表；多页连续滚动，页间距为 5px，支持放大和缩小。
 - Ctrl＋左键点击 PDF，跳到最近正文对应的源码；macOS 同时支持 Cmd＋左键。TeX 原生右键菜单中的 **Go to PDF Location** 提供正向同步。
 - 选中文字后点击 **Add Annotation**，在选区下方填写意见；区域选择可框选公式或图片。
+- 文本选区使用统一底色；`tt`、`ff`、`ffi` 等字体连字可正确复制为普通字母。
 - 重载后按原选中文字跨页恢复批注位置，兼容断行连字符和字体连字。原文已删除的批注保留在侧栏，标记为“待重新定位”。
 - 批注支持多行和 Ctrl/Cmd+Enter 保存；点击空白处保存文字并收起，编号可重新打开意见。
 - 批注中的 **Send Task** 会保存并直接提交这条意见，使用当前代理、模型和思考强度；代理忙时排入同一会话。侧栏复选框可组合多条批注和总体要求，再按 **Enter** 或点击 **Send**；**Shift+Enter** 换行，支持输入法组合输入。
@@ -150,7 +157,7 @@ npm run check
 npm test
 npm run test:ui
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.2.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.3.vsix npm run test:ui
 ```
 
 UI 测试使用隔离的 VS Code 配置与真实 TeXpresso / TeX Live，覆盖真实目录写入、差异备份、旧任务迁移、TeX Diff 与 PDF 联动、其他文本 Diff、批注来源／清理／追问、整轮撤回和连续会话。截图在 `output/playwright/`。

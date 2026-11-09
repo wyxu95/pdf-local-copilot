@@ -11,7 +11,7 @@ await rm(path.join(root, 'output/host'), { recursive: true, force: true });
 await mkdir(path.join(root, 'output/host'), { recursive: true });
 await cp(path.join(root, 'examples/paper'), path.join(root, 'output/host/paper'), { recursive: true });
 const testMain = path.join(root, 'output/host/paper/main.tex');
-await writeFile(testMain, (await readFile(testMain, 'utf8')).replace('\\author{Local Copilot Demo}', '\\author{ANONYMOUS AUTHOR(S)}'));
+await writeFile(testMain, (await readFile(testMain, 'utf8')).replace('\\author{Local Copilot Demo}', '\\author{ANONYMOUS AUTHOR(S)}').replace('\\usepackage[numbers]{natbib}', '\\usepackage{libertine}\\usepackage[numbers]{natbib}').replace('For hover previews,', 'An effective attack on an efficient office workflow.\n\nFor hover previews,'));
 await writeFile(path.join(root, 'output/host/paper/refs.bib'), '@article{testA,\n  title = {OldReferenceTitle},\n  author = {Alice},\n  year = {2020},\n  note = {A long unchanged reference note separates this entry from the next one.}\n}\n\n@article{testB,\n  title = {Another reference},\n  author = {Bob},\n  year = {2021}\n}\n');
 await writeFile(path.join(root, 'output/host/paper/unchanged.dat'), 'Unchanged project asset');
 await writeFile(path.join(root, 'output/host/paper/helper.js'), 'export const result = "oldCodeValue";\n');

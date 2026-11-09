@@ -17,6 +17,7 @@ The workflow is inspired by [Papilot](https://github.com/PapilotAI/papilot): rev
 ## What you can do
 
 - **Annotate the rendered paper.** Select text or draw a region around an equation or figure. Write the request directly below the selection and click **Send Task** (Send task).
+- **Copy readable text.** Ligatures such as `tt`, `ff`, and `ffi` retain their letters when copied. Selection uses one uniform highlight layer.
 - **Chat without an annotation.** A request in the paper conversation enters the same review flow. Changes made this way are marked **From Conversation** (From conversation).
 - **Keep one agent conversation.** Follow-up tasks queue in the current Codex or Claude session. Choose a model and reasoning effort for each turn.
 - **Edit and preview the same files.** The agent works in the real project directory. TeXpresso updates the current paper, including unsaved LaTeX edits.
@@ -97,8 +98,18 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.7.2.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.3.vsix
 ```
+
+### Download a CI build
+
+Open a successful run under [Actions → CI](https://github.com/wyxu95/pdf-local-copilot/actions/workflows/ci.yml)
+and download **pdf-local-copilot-darwin-arm64** from its **Artifacts** section.
+Extract the ZIP and install the included `.vsix` with **Extensions: Install from VSIX…**.
+CI builds the native engine and packages the extension on a macOS ARM64 runner
+after the TypeScript and component checks pass. Builds run on pushes to `main`,
+pull requests, and manual **Run workflow** requests. Install the Homebrew and TeX
+dependencies listed above on the machine running the extension.
 
 Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
 
@@ -166,6 +177,7 @@ TeXpresso is maintained as a **pinned upstream revision plus tracked patches**. 
 | [scripts/texpresso-text-layer.patch](scripts/texpresso-text-layer.patch) | Exports bounded character geometry through three frontend C files |
 | [scripts/texpresso-pdf-links.patch](scripts/texpresso-pdf-links.patch) | Exports internal links and named destinations from the PDF backend for reference previews |
 | [scripts/texpresso-link-geometry.patch](scripts/texpresso-link-geometry.patch) | Uses text-character quads for tight DVI link regions, separating adjacent citation numbers |
+| [scripts/texpresso-unicode.patch](scripts/texpresso-unicode.patch) | Decodes multi-letter XDV glyph names such as `t_t` and `f_f_i` into selectable Unicode text |
 | `vendor/texpresso/` | Generated, ignored upstream source checkout |
 | `native/` | Generated binaries, copied TeXpresso license, and build provenance |
 | [src/live.ts](src/live.ts) | Starts and communicates with the headless renderer |
@@ -198,7 +210,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.2.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.3.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.

@@ -902,7 +902,7 @@ export class Paper {
     if (this.selectedEdit !== id) return;
     if (!this.proposalPanel) this.showProposal(true);
     let a = this.markers.before.find(m => m.id === id), b = this.markers.after.find(m => m.id === id);
-    if (!a || this.task.mode !== 'workspace' && !b) { await this.paintMarkers(); a = this.markers.before.find(m => m.id === id); b = this.markers.after.find(m => m.id === id); }
+    if (!a || a.unresolved || this.task.mode !== 'workspace' && (!b || b.unresolved)) { await this.paintMarkers(); a = this.markers.before.find(m => m.id === id); b = this.markers.after.find(m => m.id === id); }
     if (this.selectedEdit !== id) return;
     if (a) { this.before?.showPage(a.page); this.post(this.panelFor('before'), { type: 'reveal', page: a.page, rect: a.rects[0], id }); }
     if (b) { this.after?.showPage(b.page); this.post(this.panelFor('after'), { type: 'reveal', page: b.page, rect: b.rects[0], id }); }

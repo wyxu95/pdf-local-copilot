@@ -16,7 +16,8 @@ body.marker-gutters { --marker-gutter: 28px; }
 .page-failure button { color: var(--vscode-button-foreground); background: var(--vscode-button-background); padding: 6px 10px; border: none; border-radius: 3px; cursor: pointer; }
 .text-layer { position: absolute; inset: 0; overflow: hidden; color: transparent; user-select: text; white-space: pre; line-height: 1; font-family: serif; cursor: text; }
 .text-layer span { position: absolute; display: inline-block; overflow: visible; color: transparent; line-height: 1.1; }
-.text-layer ::selection { background: #218b7260; color: transparent; }
+.text-layer ::selection { background: transparent; color: transparent; }
+.selection-box.text-selection { background: none; border: none; fill: #218b7260; }
 .reference-link-hover .text-layer { cursor: pointer; }
 .reference-preview { position: absolute; z-index: 20; border: 1px solid var(--vscode-widget-border, #8886); border-radius: 5px; background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background)); color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground)); box-shadow: 0 5px 20px #0004; padding: 8px; }
 .reference-header { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; font-size: 12px; }

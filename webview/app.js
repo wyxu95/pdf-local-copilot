@@ -257,7 +257,8 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
       record.paper.append(badge);
     });
     if (state.draft?.page === record.page) {
-      for (const rect of state.draft.rects) { const mark = make('div', 'selection-box'); rectStyle(mark, rect, record.bounds); record.surface.append(mark); }
+      if (state.draft.kind === 'region') for (const rect of state.draft.rects) { const mark = make('div', 'selection-box'); rectStyle(mark, rect, record.bounds); record.surface.append(mark); }
+      else drawTextSelection(record, state.draft.rects);
       if (state.draft.phase === 'editing') {
         const rect = state.draft.rects[0], x = Math.max(record.crop[0] + 1, rect[0] - 18);
         const badge = make('button', 'note-marker draft-marker', String(notesFor(record.page).length + 1)); badge.title = 'Continue editing this annotation';
@@ -442,13 +443,36 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
       else result.push([...rect]);
     } return result;
   }
-  function selectText(event, record) {
-    if (event.ctrlKey || event.metaKey || sourcePointer || skipSelection || !record.imageReady || state.tool !== 'text' || !fresh(state.side, record.frame)) return;
+  function textSelection(record) {
     const selection = window.getSelection(); if (!selection?.rangeCount || selection.isCollapsed || !record.paper.contains(selection.anchorNode) || !record.paper.contains(selection.focusNode)) return;
     const range = selection.getRangeAt(0), quote = selection.toString().trim().replaceAll('\u0000', '�'); if (!quote) return;
-    const rects = [...record.paper.querySelectorAll('.text-layer span')].filter(span => range.intersectsNode(span)).map(span => JSON.parse(span.dataset.rect)).filter(rect => rect[2] > rect[0] && rect[3] > rect[1]);
-    if (rects.length) beginDraft(record.frame, merge(rects).slice(0, 500), quote);
+    const rects = [...record.paper.querySelectorAll('.text-layer span')].filter(span => range.intersectsNode(span) && !(span.firstChild === range.endContainer && range.endOffset === 0) && !(span.firstChild === range.startContainer && range.startOffset === span.textContent.length)).map(span => JSON.parse(span.dataset.rect)).filter(rect => rect[2] > rect[0] && rect[3] > rect[1]);
+    if (rects.length) return { rects: merge(rects).slice(0, 500), quote };
   }
+  function drawTextSelection(record, rects) {
+    record.surface.querySelector('.text-selection')?.remove();
+    if (!rects.length) return;
+    const bounds = [Math.min(...rects.map(r => r[0])), Math.min(...rects.map(r => r[1])), Math.max(...rects.map(r => r[2])), Math.max(...rects.map(r => r[3]))];
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), path = document.createElementNS(svg.namespaceURI, 'path');
+    svg.setAttribute('class', 'selection-box text-selection'); svg.setAttribute('viewBox', `${bounds[0]} ${bounds[1]} ${bounds[2] - bounds[0]} ${bounds[3] - bounds[1]}`); svg.setAttribute('preserveAspectRatio', 'none');
+    path.setAttribute('d', rects.map(r => `M${r[0]} ${r[1]}H${r[2]}V${r[3]}H${r[0]}Z`).join(' ')); svg.append(path); rectStyle(svg, bounds, record.bounds); record.surface.append(svg);
+  }
+  function selectText(event, record) {
+    if (event.ctrlKey || event.metaKey || sourcePointer || skipSelection || !record.imageReady || state.tool !== 'text' || !fresh(state.side, record.frame)) return;
+    const selected = textSelection(record); if (selected) beginDraft(record.frame, selected.rects, selected.quote);
+  }
+  document.addEventListener('selectionchange', () => {
+    for (const record of state.rows.values()) if (record.surface) {
+      const selected = textSelection(record);
+      if (selected) drawTextSelection(record, selected.rects);
+      else if (state.draft?.page !== record.page || state.draft.kind !== 'text') record.surface.querySelector('.text-selection')?.remove();
+    }
+  });
+  document.addEventListener('copy', event => {
+    const selection = window.getSelection(), layer = selection?.anchorNode?.parentElement?.closest('.text-layer');
+    if (!event.clipboardData || !layer || !layer.contains(selection.focusNode) || selection.isCollapsed) return;
+    event.clipboardData.setData('text/plain', selection.toString().replace(/[\uFB00-\uFB06]/g, value => value.normalize('NFKC'))); event.preventDefault();
+  });
   let drag, textDrag, linkPress, sourcePointer = false, skipSelection = false;
   function point(event, record) {
     return sourcePoint(record.bounds, record.surface.getBoundingClientRect(), event.clientX, event.clientY);

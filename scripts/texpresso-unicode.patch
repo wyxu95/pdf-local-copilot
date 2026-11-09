@@ -1,0 +1,27 @@
+--- a/src/dvi/dvi_prim.c
++++ b/src/dvi/dvi_prim.c
+@@ -378,9 +378,21 @@
+          * selection and inverse SyncTeX instead of marking every glyph NUL. */
+         char name[128] = {0};
+         fz_get_glyph_name(ctx, font, glyphs[i], name, sizeof name);
+-        int unicode = fz_unicode_from_glyph_name_strict(name);
+-        fz_show_glyph(ctx, text, font, ctm, glyphs[i], unicode > 0 ? unicode : 0, 0, 0, FZ_BIDI_LTR,
+-                      FZ_LANG_UNSET);
++        char *suffix = strchr(name, '.');
++        if (suffix) *suffix = 0;
++        int unicode[128], count = 0;
++        char *part = name;
++        while (part) {
++          char *next = strchr(part, '_');
++          if (next) *next++ = 0;
++          int code = fz_unicode_from_glyph_name_strict(part);
++          if (code <= 0) { count = 0; break; }
++          unicode[count++] = code;
++          part = next;
++        }
++        if (!count) { unicode[0] = 0; count = 1; }
++        for (int j = 0; j < count; j++)
++          fz_show_glyph(ctx, text, font, ctm, j ? -1 : glyphs[i], unicode[j], 0, 0, FZ_BIDI_LTR, FZ_LANG_UNSET);
+       }
+     }
+   }

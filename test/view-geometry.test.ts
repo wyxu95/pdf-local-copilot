@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, nearestTextPoint, textContext, textLines, textCaret } from '../src/view-geometry';
+import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, nearestTextPoint, textContext, textLines, textCaret, quoteGeometry } from '../src/view-geometry';
+test('old annotations with replacement ligatures still anchor to repaired text', () => {
+  const text = 'The Attack affects an efficient office.', characters: [number, number, number, number, number][] = [...text].map((c, i) => [c.codePointAt(0)!, 50 + i * 5, 100, 55 + i * 5, 110]);
+  const header = { requestId: 1, revision: 1, sequence: 1, page: 0, bounds: [0, 0, 600, 800] as [number, number, number, number], width: 600, height: 800, mime: 'image/png' as const, byteLength: 1, characters };
+  assert.deepEqual(quoteGeometry(header, '�e A�ack affects an e�cient o�ce.'), [[50, 100, 50 + text.length * 5, 110]]);
+  assert.equal(quoteGeometry(header, 'Removed � hypothesis'), undefined);
+});
 test('cropping enlarges horizontal content while preserving full-page coordinates', () => {
   const page: [number, number, number, number] = [0, 0, 600, 800];
   const crop = horizontalCrop(page, [80, 40, 520, 760]); assert.deepEqual(crop, [70, 0, 530, 800]);
