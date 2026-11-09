@@ -9,6 +9,8 @@ The small patch in `scripts/texpresso-text-layer.patch` adds bounded character
 geometry for text selection in this extension and is available under MIT.
 The MIT patch in `scripts/texpresso-pdf-links.patch` exports PDF link and
 destination metadata for reference hover previews.
+The MIT patch in `scripts/texpresso-link-geometry.patch` extracts tight DVI link
+regions from character geometry for individual citation-number hit testing.
 
 Native builds link against libraries installed on the build host, including
 MuPDF (AGPL-3.0-or-later or a commercial license), SDL2 (zlib), HarfBuzz (MIT),

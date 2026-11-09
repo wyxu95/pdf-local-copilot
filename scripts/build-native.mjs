@@ -15,7 +15,7 @@ if (current !== revision) {
   if (dirty.trim()) throw new Error('Native source has local changes at another revision. Preserve them before building.');
   run('git', ['fetch', 'https://github.com/DominikPeters/texpresso.git', revision]); run('git', ['checkout', '--detach', revision]);
 }
-for (const name of ['texpresso-text-layer.patch', 'texpresso-pdf-links.patch']) {
+for (const name of ['texpresso-text-layer.patch', 'texpresso-pdf-links.patch', 'texpresso-link-geometry.patch']) {
   const patch = path.join(root, 'scripts', name);
   const check = spawnSync('git', ['apply', '--check', patch], { cwd: source, encoding: 'utf8' });
   if (check.status === 0) run('git', ['apply', patch]);
@@ -38,5 +38,5 @@ for (const binary of ['texpresso', 'texpresso-xetex']) {
 }
 await copyFile(path.join(source, 'LICENSE'), path.join(native, 'TEXPRESSO-LICENSE'));
 const capabilities = execFileSync(path.join(native, 'texpresso'), ['-capabilities'], { encoding: 'utf8' });
-await writeFile(path.join(native, 'build.json'), JSON.stringify({ platform: process.platform, arch: process.arch, revision, textLayerPatch: true, pdfLinksPatch: true, capabilities: JSON.parse(capabilities), note: 'Built against this host’s installed native libraries. Rebuild on a different host.' }, null, 2));
+await writeFile(path.join(native, 'build.json'), JSON.stringify({ platform: process.platform, arch: process.arch, revision, textLayerPatch: true, pdfLinksPatch: true, linkGeometryPatch: true, capabilities: JSON.parse(capabilities), note: 'Built against this host’s installed native libraries. Rebuild on a different host.' }, null, 2));
 console.log(`Native build ready: ${native}`);

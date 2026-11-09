@@ -12,10 +12,10 @@
 
 ## 安装与打开
 
-先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.7.0.vsix`。
+先按 [源码构建步骤](README.md#build-and-install) 生成 Apple Silicon Mac 开发包：`artifacts/pdf-local-copilot-0.7.1.vsix`。
 
 ```sh
-code --install-extension artifacts/pdf-local-copilot-0.7.0.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.1.vsix
 ```
 
 打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
@@ -27,6 +27,7 @@ code --install-extension artifacts/pdf-local-copilot-0.7.0.vsix
 ## PDF 批注与任务队列
 
 - 鼠标悬停在引用编号、Figure 或 Table 的链接编号上，可预览当前稿件中的参考文献条目、图表及题注。移入弹窗可继续查看和滚动，移出或按 Escape 关闭；点击编号或 **Go to Target** 跳转到目标页。预览依据文档内部链接，通常由 `hyperref` 生成。
+- 同组引用中的每个编号分别命中对应条目。预览保持正文当前的显示比例，整行宽的内容按整行宽展示；编辑器较窄时可在弹窗内横向滚动。
 - 页面适配可用宽度并裁掉左右空白，保留图表；多页连续滚动，页间距为 5px，支持放大和缩小。
 - Ctrl＋左键点击 PDF，跳到最近正文对应的源码；macOS 同时支持 Cmd＋左键。TeX 原生右键菜单中的 **Go to PDF Location** 提供正向同步。
 - 选中文字后点击 **Add Annotation**，在选区下方填写意见；区域选择可框选公式或图片。
@@ -148,7 +149,7 @@ npm run check
 npm test
 npm run test:ui
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.0.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.1.vsix npm run test:ui
 ```
 
 UI 测试使用隔离的 VS Code 配置与真实 TeXpresso / TeX Live，覆盖真实目录写入、差异备份、旧任务迁移、TeX Diff 与 PDF 联动、其他文本 Diff、批注来源／清理／追问、整轮撤回和连续会话。截图在 `output/playwright/`。

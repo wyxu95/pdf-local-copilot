@@ -41,7 +41,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     paper.addEventListener('pointerup', e => pointerUp(e, record));
     paper.addEventListener('pointercancel', () => { textDrag = null; drag = null; });
     paper.addEventListener('mouseup', e => selectText(e, record));
-    paper.addEventListener('pointerleave', () => { clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(dismissReference, 140); });
+    paper.addEventListener('pointerleave', hideReferenceAfterLeave);
     resize.observe(paper); return record;
   }
   function ensureRows(required = 0) {
@@ -173,7 +173,10 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
   let hoveredReference = null, referenceTimer, referenceHideTimer, referenceRequest = 0;
   const referenceCache = new Map();
   referenceCard.addEventListener('pointerenter', () => clearTimeout(referenceHideTimer));
-  referenceCard.addEventListener('pointerleave', () => { clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(dismissReference, 140); });
+  referenceCard.addEventListener('pointerleave', hideReferenceAfterLeave);
+  function hideReferenceAfterLeave() {
+    clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(() => { if (!referenceCard.matches(':hover')) dismissReference(); }, 140);
+  }
   function dismissReference() {
     clearTimeout(referenceTimer); clearTimeout(referenceHideTimer); hoveredReference = null; referenceRequest++; referenceCard.hidden = true;
     for (const record of state.rows.values()) record.paper.classList.remove('reference-link-hover');
@@ -183,7 +186,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     if (!hoveredReference || referenceCard.hidden) return;
     const record = hoveredReference.record, b = record.bounds, surface = record.surface.getBoundingClientRect(), outer = viewport.getBoundingClientRect(), rect = hoveredReference.hit.link.bounds;
     const x = surface.left + (rect[0] - b[0]) / (b[2] - b[0]) * surface.width, top = surface.top + (rect[1] - b[1]) / (b[3] - b[1]) * surface.height, bottom = surface.top + (rect[3] - b[1]) / (b[3] - b[1]) * surface.height;
-    referenceCard.style.width = `${Math.max(160, Math.min(760, viewport.clientWidth - 24))}px`;
+    referenceCard.style.width = `${Math.min(viewport.clientWidth - 16, Math.max(250, (hoveredReference.width || 0) + 18))}px`;
     const left = Math.max(8, Math.min(x - outer.left, viewport.clientWidth - referenceCard.offsetWidth - 8));
     const y = bottom - outer.top + 8 + referenceCard.offsetHeight <= viewport.clientHeight - 8 ? bottom - outer.top + 8 : Math.max(8, top - outer.top - referenceCard.offsetHeight - 8);
     referenceCard.style.left = `${viewport.scrollLeft + left}px`; referenceCard.style.top = `${viewport.scrollTop + y}px`;
@@ -191,7 +194,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
   function hoverReference(event, record) {
     if (event.buttons || event.ctrlKey || event.metaKey || event.pointerType === 'touch' || !record.imageReady || !fresh(state.side, record.frame) || state.tool !== 'text' || state.openNote || state.openReview || state.draft?.phase === 'editing' && !state.draft.hidden) { dismissReference(); return; }
     const hit = referenceLinkAt(record.frame.header, ...point(event, record));
-    if (!hit) { if (!referenceCard.matches(':hover')) { clearTimeout(referenceHideTimer); referenceHideTimer = setTimeout(dismissReference, 140); } return; }
+    if (!hit) { hideReferenceAfterLeave(); return; }
     clearTimeout(referenceHideTimer); record.paper.classList.add('reference-link-hover');
     const key = `${version(record.frame)}:${record.page}:${hit.index}`;
     if (hoveredReference?.key === key) return;
@@ -205,13 +208,16 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
       if (cached) showReference(cached); else send({ ...hoveredReference.payload, type: 'referencePreview' });
     }, 280);
   }
-  function showReference(preview) {
-    if (!hoveredReference) return;
+  async function showReference(preview) {
+    const current = hoveredReference; if (!current) return;
+    const image = new Image(); image.src = preview.image; image.alt = `${preview.kind} preview on page ${preview.target.page + 1}`;
+    await image.decode(); if (hoveredReference !== current) return;
     const label = hoveredReference.label.match(/\[[^\]]+\]|\d+[a-z]?(?:[–−-]\d+[a-z]?)?/i)?.[0] || hoveredReference.label.replace(/[,.;:\s]+$/, '');
     referenceHeading.textContent = `${preview.kind}${label ? ' ' + label : ''} · Page ${preview.target.page + 1}`;
-    const image = new Image(); image.src = preview.image; image.alt = `${preview.kind} preview on page ${preview.target.page + 1}`;
+    const record = hoveredReference.record, scale = record.surface.getBoundingClientRect().width / (record.bounds[2] - record.bounds[0]);
+    hoveredReference.width = (preview.bounds[2] - preview.bounds[0]) * scale;
+    image.style.width = `${hoveredReference.width}px`;
     referenceContent.replaceChildren(image); referenceCard.hidden = false; positionReference();
-    void image.decode().then(positionReference).catch(() => {});
   }
   async function renderReference(message) {
     const current = hoveredReference; if (!current || current.payload.requestId !== message.requestId) return;
@@ -224,8 +230,8 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     const page = message.header.bounds, sx = image.naturalWidth / (page[2] - page[0]), sy = image.naturalHeight / (page[3] - page[1]);
     const crop = document.createElement('canvas'); crop.width = Math.max(1, Math.ceil((bounds[2] - bounds[0]) * sx)); crop.height = Math.max(1, Math.ceil((bounds[3] - bounds[1]) * sy));
     const out = crop.getContext('2d'); out.fillStyle = 'white'; out.fillRect(0, 0, crop.width, crop.height); out.drawImage(image, (bounds[0] - page[0]) * sx, (bounds[1] - page[1]) * sy, crop.width, crop.height, 0, 0, crop.width, crop.height);
-    const preview = { kind, target: message.target, image: crop.toDataURL('image/png') }; referenceCache.set(current.key, preview);
-    if (referenceCache.size > 8) referenceCache.delete(referenceCache.keys().next().value); showReference(preview);
+    const preview = { kind, target: message.target, bounds, image: crop.toDataURL('image/png') }; referenceCache.set(current.key, preview);
+    if (referenceCache.size > 8) referenceCache.delete(referenceCache.keys().next().value); await showReference(preview);
   }
   function drawMarks(record) {
     updateRailVisibility();

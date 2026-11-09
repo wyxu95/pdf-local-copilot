@@ -1,0 +1,34 @@
+diff --git a/src/dvi/dvi_prim.c b/src/dvi/dvi_prim.c
+index 9308265..de87e21 100644
+--- a/src/dvi/dvi_prim.c
++++ b/src/dvi/dvi_prim.c
+@@ -62,7 +62,28 @@ void dvi_context_flush_text(fz_context *ctx, dvi_context *dc, dvi_state *st)
+   {
+     if (!dc->dev)
+       abort();
+-    if (dc->annotation_uri) dvi_annotation_bounds(ctx, dc, fz_bound_text(ctx, dc->text, NULL, fz_identity));
++    if (dc->annotation_uri) {
++      fz_stext_page *page = NULL;
++      fz_device *dev = NULL;
++      fz_var(page); fz_var(dev);
++      fz_try(ctx) {
++        page = fz_new_stext_page(ctx, fz_infinite_rect);
++        dev = fz_new_stext_device(ctx, page, NULL);
++        fz_fill_text(ctx, dev, dc->text, fz_identity, fz_device_rgb(ctx), st->gs.colors.fill, 1.0, color_params);
++        fz_close_device(ctx, dev);
++        for (fz_stext_block *block = page->first_block; block; block = block->next) {
++          if (block->type != FZ_STEXT_BLOCK_TEXT) continue;
++          for (fz_stext_line *line = block->u.t.first_line; line; line = line->next) {
++            fz_rect bounds = fz_empty_rect;
++            for (fz_stext_char *c = line->first_char; c; c = c->next)
++              bounds = fz_union_rect(bounds, fz_rect_from_quad(c->quad));
++            dvi_annotation_bounds(ctx, dc, bounds);
++          }
++        }
++      }
++      fz_always(ctx) { fz_drop_device(ctx, dev); fz_drop_stext_page(ctx, page); }
++      fz_catch(ctx) { /* Link metadata must not interrupt page rendering. */ }
++    }
+     fz_fill_text(ctx, dc->dev, dc->text, fz_identity, fz_device_rgb(ctx),
+         st->gs.colors.fill, 1.0, color_params);
+     fz_drop_text(ctx, dc->text);

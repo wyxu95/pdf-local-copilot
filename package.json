@@ -2,7 +2,7 @@
   "name": "pdf-local-copilot",
   "displayName": "PDF Local Copilot",
   "description": "Annotate your paper, revise with local Codex or Claude, and review live TeXpresso previews.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "local-paper-tools",
   "license": "MIT",
   "engines": {
@@ -632,7 +632,7 @@
     "test:host": "node scripts/test-host.mjs",
     "test:ui": "npm run build && node scripts/test-ui.mjs",
     "native:build": "node scripts/build-native.mjs",
-    "package": "npm run build && vsce package --target darwin-arm64 --no-dependencies --out artifacts/pdf-local-copilot-0.7.0.vsix"
+    "package": "npm run build && vsce package --target darwin-arm64 --no-dependencies --out artifacts/pdf-local-copilot-0.7.1.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

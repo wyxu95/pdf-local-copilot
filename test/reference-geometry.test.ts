@@ -29,3 +29,14 @@ test('link hit testing ignores external URLs and classifies figure and table tar
   assert.equal(referenceKind('figure.2'), 'Figure'); assert.equal(referenceKind('subfigure.2a'), 'Figure');
   assert.equal(referenceKind('table.caption.3'), 'Table'); assert.equal(referenceKind('cite.first'), 'Reference');
 });
+test('dense bibliography previews exclude the preceding tail and following entry', () => {
+  const header = bibliography(); header.characters = [];
+  for (const [text, y] of [['[5] Previous entry', 90], ['Previous continuation', 100], ['[6] Selected entry', 110], ['Selected continuation', 120], ['[7] Next entry', 130]] as const) {
+    [...text].forEach((c, i) => header.characters!.push([c.codePointAt(0)!, 50 + i * 5, y, 55 + i * 5, y + 8]));
+    header.characters.push([10, 0, 0, 0, 0]);
+  }
+  header.annotations!.destinations = [{ name: 'cite.previous', x: 50, y: 86 }, { name: 'cite.selected', x: 50, y: 106 }, { name: 'cite.next', x: 50, y: 126 }];
+  const bounds = referencePreviewBounds(header, header.annotations!.destinations[1], 'Reference');
+  assert.ok(bounds[1] > 108 && bounds[3] < 130, String(bounds));
+  assert.equal(referenceLabel(header, bounds), '[6] Selected entrySelected continuation');
+});

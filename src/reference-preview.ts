@@ -29,14 +29,20 @@ export function referencePreviewBounds(header: FrameHeader, target: ReferencePoi
   const columnLines = lines.filter(line => line.bounds[0] < right - 4 && line.bounds[2] > left + 4).sort((a, b) => a.bounds[1] - b.bounds[1]);
   const nearest = kind === 'Reference' ? columnLines.find(line => line.bounds[3] >= target.y) : columnLines.slice().sort((a, b) => Math.max(a.bounds[1] - target.y, 0, target.y - a.bounds[3]) - Math.max(b.bounds[1] - target.y, 0, target.y - b.bounds[3]))[0];
   let top = nearest?.bounds[1] ?? target.y, bottom = nearest?.bounds[3] ?? target.y + 20;
+  let padTop = 6, padBottom = 6;
   const following = destinations.filter(dest => dest.name !== target.name && dest.y > target.y + 4 && dest.x >= left && dest.x < right);
   if (kind === 'Reference') {
+    const entry = columnLines.filter(line => /^\[\d+\]|^\d+[.)]\s/.test(line.text)).sort((a, b) => Math.abs(a.bounds[1] - target.y) - Math.abs(b.bounds[1] - target.y))[0];
+    if (entry && Math.abs(entry.bounds[1] - target.y) < Math.max(16, (entry.bounds[3] - entry.bounds[1]) * 2)) { top = entry.bounds[1]; bottom = entry.bounds[3]; }
     const next = following.filter(dest => /^(cite|section)[.*]/i.test(dest.name)).sort((a, b) => a.y - b.y)[0];
     const selected = columnLines.filter(line => line.bounds[1] >= top - 2 && (!next || line.bounds[1] < next.y - 2));
     for (const line of selected) {
       if (!next && line.bounds[1] > top + 3 && (/^\[\d+\]|^\d+[.)]\s/.test(line.text) || line.bounds[1] - bottom > Math.max(9, (line.bounds[3] - line.bounds[1]) * .9))) break;
       bottom = Math.max(bottom, line.bounds[3]);
     }
+    const previousBottom = Math.max(...columnLines.filter(line => line.bounds[1] < top - 1).map(line => line.bounds[3]));
+    const nextTop = Math.min(...columnLines.filter(line => line.bounds[1] > bottom).map(line => line.bounds[1]));
+    padTop = Math.min(6, Math.max(0, (top - previousBottom) / 2)); padBottom = Math.min(6, Math.max(0, (nextTop - bottom) / 2));
   } else {
     const captions = columnLines.filter(line => (kind === 'Figure' ? /^(?:Figure|Fig[.]?)\s*\d/i : /^(?:Table|Tab[.]?)\s*\d/i).test(line.text));
     const caption = captions.sort((a, b) => Math.abs(a.bounds[1] - target.y) - Math.abs(b.bounds[1] - target.y))[0];
@@ -76,5 +82,5 @@ export function referencePreviewBounds(header: FrameHeader, target: ReferencePoi
       if (max >= min) { left = Math.max(page[0], page[0] + min / sx - 6); right = Math.min(page[2], page[0] + (max + 1) / sx + 6); }
     }
   }
-  return [left, Math.max(page[1], top - 6), right, Math.min(page[3], Math.max(top + 12, bottom) + 6)];
+  return [left, Math.max(page[1], top - padTop), right, Math.min(page[3], bottom + padBottom)];
 }

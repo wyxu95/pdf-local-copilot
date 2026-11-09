@@ -65,6 +65,9 @@ closes it. Click the reference or **Go to Target** to navigate to its page.
 Previews use the document's internal hyperlinks, typically produced by
 `hyperref`. Bibliography entries and float regions are cropped from the local
 rendered page. Editing or rebuilding the paper refreshes the preview cache.
+Each number in a grouped citation has its own target. Preview content keeps the
+paper's current display scale; a full-width figure or reference occupies its
+rendered line width. Wide content scrolls horizontally within a narrow editor.
 
 ## Build and install
 
@@ -92,7 +95,7 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.7.0.vsix
+code --install-extension artifacts/pdf-local-copilot-0.7.1.vsix
 ```
 
 Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
@@ -160,6 +163,7 @@ TeXpresso is maintained as a **pinned upstream revision plus tracked patches**. 
 | [scripts/build-native.mjs](scripts/build-native.mjs) | Fetches revision `df8b0941ef19b36377014d18a9a264f3591280b1` from the DominikPeters headless fork, checks/applies the patches, and builds the engine |
 | [scripts/texpresso-text-layer.patch](scripts/texpresso-text-layer.patch) | Exports bounded character geometry through three frontend C files |
 | [scripts/texpresso-pdf-links.patch](scripts/texpresso-pdf-links.patch) | Exports internal links and named destinations from the PDF backend for reference previews |
+| [scripts/texpresso-link-geometry.patch](scripts/texpresso-link-geometry.patch) | Uses text-character quads for tight DVI link regions, separating adjacent citation numbers |
 | `vendor/texpresso/` | Generated, ignored upstream source checkout |
 | `native/` | Generated binaries, copied TeXpresso license, and build provenance |
 | [src/live.ts](src/live.ts) | Starts and communicates with the headless renderer |
@@ -192,7 +196,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.0.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.7.1.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.

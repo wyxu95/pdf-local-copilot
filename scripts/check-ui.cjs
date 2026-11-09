@@ -473,12 +473,12 @@ let browser, page;
   await page.screenshot({ path: 'output/playwright/vscode-custom-claude-agent.png' });
   await page.getByRole('tab', { name: /^Paper · main\.tex/ }).click();
   await command('Go to Page'); await input().fill('1'); await page.keyboard.press('Enter');
-  async function referenceSpan(kind) {
-    const index = await frame.evaluate(kind => {
+  async function referenceSpan(kind, number = '1') {
+    const index = await frame.evaluate(({ kind, number }) => {
       const spans = [...document.querySelectorAll('#paper .text-layer span')], text = spans.map(span => span.textContent).join('');
-      if (kind === 'Reference') { const at = text.indexOf('[1]'); return at < 0 ? -1 : at + 1; }
+      if (kind === 'Reference') { const group = /\[1,\s*2\]/.exec(text); return group ? group.index + group[0].indexOf(number) : -1; }
       const at = text.indexOf(kind), next = text.slice(at + kind.length).search(/\d/); return at < 0 || next < 0 ? -1 : at + kind.length + next;
-    }, kind);
+    }, { kind, number });
     assert.ok(index >= 0, `No ${kind} link in the demo`); return frame.locator('#paper .text-layer span').nth(index);
   }
   const referenceCard = frame.locator('#reference-preview');
@@ -494,6 +494,21 @@ let browser, page;
     if (kind === 'Table') { await page.keyboard.press('Escape'); await referenceCard.waitFor({ state: 'hidden' }); await span.hover(); await referenceCard.waitFor({ state: 'visible' }); }
     await frame.locator('#paper').hover({ position: { x: 4, y: 4 } }); await referenceCard.waitFor({ state: 'hidden' });
   }
+  await (await referenceSpan('Reference')).hover();
+  await until(async () => (await referenceCard.locator('strong').textContent()) === 'Reference 1 · Page 3' && await referenceCard.locator('img').count() === 1);
+  const firstCitationImage = await referenceCard.locator('img').getAttribute('src');
+  const originalWidth = await referenceCard.locator('img').evaluate(image => image.getBoundingClientRect().width);
+  const originalSurface = await frame.locator('#paper .page-surface').evaluate(surface => surface.getBoundingClientRect().width);
+  await (await referenceSpan('Reference', '2')).hover();
+  await until(async () => (await referenceCard.locator('strong').textContent()) === 'Reference 2 · Page 3' && await referenceCard.locator('img').count() === 1 && await referenceCard.locator('img').getAttribute('src') !== firstCitationImage);
+  for (let i = 0; i < 3; i++) await command('Zoom In');
+  await (await referenceSpan('Reference')).hover();
+  await until(async () => (await referenceCard.locator('strong').textContent()) === 'Reference 1 · Page 3' && await referenceCard.locator('img').count() === 1);
+  const enlargedWidth = await referenceCard.locator('img').evaluate(image => image.getBoundingClientRect().width);
+  const enlargedSurface = await frame.locator('#paper .page-surface').evaluate(surface => surface.getBoundingClientRect().width);
+  assert.ok(Math.abs(enlargedWidth / originalWidth - enlargedSurface / originalSurface) < .02, 'Preview was resized independently of the paper zoom');
+  assert.ok(await referenceCard.locator('.reference-content').evaluate(content => content.scrollWidth > content.clientWidth), 'A wide preview was shrunk instead of retaining the paper scale');
+  await command('Fit Width');
   await (await referenceSpan('Reference')).click();
   await frame.locator('.paper[data-page="2"] .page-image').waitFor();
   await until(async () => await frame.evaluate(() => {
