@@ -1,0 +1,72 @@
+diff --git a/src/frontend/preview.c b/src/frontend/preview.c
+index 98aef3b..6173282 100644
+--- a/src/frontend/preview.c
++++ b/src/frontend/preview.c
+@@ -576,6 +576,16 @@ void txp_preview_export(fz_context *ctx, txp_preview *p, fz_display_list *list,
+     if (!p->region && p->annotations && p->annotations->len) {
+       printf(",\"annotations\":%.*s", (int)p->annotations->len, p->annotations->data);
+     }
++    if (!p->region) {
++      fz_buffer *characters = NULL;
++      fz_var(characters);
++      fz_try(ctx) { characters = txp_renderer_characters(ctx, renderer); }
++      fz_catch(ctx) { /* An image remains usable for region annotations. */ }
++      if (characters) {
++        printf(",\"characters\":%.*s", (int)characters->len, characters->data);
++        fz_drop_buffer(ctx, characters);
++      }
++    }
+     printf("}]\n");
+     if (len && fwrite(data, 1, len, stdout) != len)
+       _Exit(1); /* A partial binary frame cannot be recovered. */
+diff --git a/src/frontend/renderer.c b/src/frontend/renderer.c
+index 2302fbd..1955e7e 100644
+--- a/src/frontend/renderer.c
++++ b/src/frontend/renderer.c
+@@ -944,6 +944,34 @@ bool txp_renderer_select_char(fz_context *ctx, txp_renderer *self, fz_point pt)
+   return set_quads(ctx, self, &q, count);
+ }
+ 
++/* Bounded character geometry for an editor-owned selectable text layer. */
++fz_buffer *txp_renderer_characters(fz_context *ctx, txp_renderer *self)
++{
++  fz_stext_page *page = get_stext(ctx, self);
++  fz_buffer *buffer = fz_new_buffer(ctx, 4096);
++  fz_output *out = fz_new_output_with_buffer(ctx, buffer);
++  int count = 0;
++  fz_try(ctx) {
++    fz_write_string(ctx, out, "[");
++    for (fz_stext_block *b = page ? page->first_block : NULL; b; b = b->next) {
++      if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
++      for (fz_stext_line *l = b->u.t.first_line; l; l = l->next) {
++        for (fz_stext_char *c = l->first_char; c && count < 12000; c = c->next) {
++          fz_rect r = fz_rect_from_quad(c->quad);
++          if (!isfinite(r.x0) || !isfinite(r.y0) || !isfinite(r.x1) || !isfinite(r.y1)) continue;
++          fz_write_printf(ctx, out, "%s[%d,%.4g,%.4g,%.4g,%.4g]", count++ ? "," : "", c->c, r.x0, r.y0, r.x1, r.y1);
++        }
++        if (count && count < 12000) { fz_write_string(ctx, out, ",[10,0,0,0,0]"); count++; }
++      }
++    }
++    fz_write_string(ctx, out, "]");
++    fz_close_output(ctx, out);
++  }
++  fz_always(ctx) { fz_drop_output(ctx, out); }
++  fz_catch(ctx) { fz_drop_buffer(ctx, buffer); fz_rethrow(ctx); }
++  return buffer;
++}
++
+ char *txp_renderer_word_at(fz_context *ctx, txp_renderer *self, fz_point pt)
+ {
+   fz_stext_page *page = get_stext(ctx, self);
+diff --git a/src/frontend/renderer.h b/src/frontend/renderer.h
+index 97daf0a..1f113a7 100644
+--- a/src/frontend/renderer.h
++++ b/src/frontend/renderer.h
+@@ -84,6 +84,7 @@ bool txp_renderer_start_selection(fz_context *ctx, txp_renderer *self, fz_point
+ bool txp_renderer_drag_selection(fz_context *ctx, txp_renderer *self, fz_point pt);
+ /* Caller owns the UTF-8 result. Does not change the current selection. */
+ char *txp_renderer_word_at(fz_context *ctx, txp_renderer *self, fz_point pt);
++fz_buffer *txp_renderer_characters(fz_context *ctx, txp_renderer *self);
+ bool txp_renderer_select_word(fz_context *ctx, txp_renderer *self, fz_point pt);
+ bool txp_renderer_select_char(fz_context *ctx, txp_renderer *self, fz_point pt);
+ void txp_renderer_screen_size(fz_context *ctx, txp_renderer *self, int *w, int *h);

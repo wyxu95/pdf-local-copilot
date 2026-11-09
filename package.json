@@ -1,0 +1,665 @@
+{
+  "name": "pdf-local-copilot",
+  "displayName": "PDF Local Copilot",
+  "description": "Annotate your paper, revise with local Codex or Claude, and review live TeXpresso previews.",
+  "version": "0.5.9",
+  "publisher": "local-paper-tools",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Education",
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.cjs",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "pdfLocal.open",
+        "title": "PDF Local Copilot: 启动 PDF 批注",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "pdfLocal.run",
+        "title": "PDF Local Copilot: 论文对话与任务队列",
+        "icon": "$(comment-discussion)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.stop",
+        "title": "PDF Local Copilot: 停止修改",
+        "icon": "$(debug-stop)",
+        "enablement": "pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.compare",
+        "title": "PDF Local Copilot: 查看本轮源码差异",
+        "icon": "$(split-horizontal)",
+        "enablement": "pdfLocal.hasTask"
+      },
+      {
+        "command": "pdfLocal.apply",
+        "title": "PDF Local Copilot: 完成本轮审阅",
+        "icon": "$(check-all)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.endTask",
+        "title": "PDF Local Copilot: 结束本次审阅",
+        "icon": "$(close)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.editNote",
+        "title": "PDF Local Copilot: 编辑批注",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "pdfLocal.deleteNote",
+        "title": "PDF Local Copilot: 删除批注",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "pdfLocal.source",
+        "title": "PDF Local Copilot: 转到批注源码",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "pdfLocal.revealNote",
+        "title": "PDF Local Copilot: 在论文中显示批注",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "pdfLocal.diff",
+        "title": "PDF Local Copilot: 查看源码差异",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "pdfLocal.reject",
+        "title": "PDF Local Copilot: 撤销此文件的任务修改",
+        "icon": "$(discard)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.previousPage",
+        "title": "PDF Local Copilot: 上一页",
+        "icon": "$(chevron-left)"
+      },
+      {
+        "command": "pdfLocal.nextPage",
+        "title": "PDF Local Copilot: 下一页",
+        "icon": "$(chevron-right)"
+      },
+      {
+        "command": "pdfLocal.selectPage",
+        "title": "PDF Local Copilot: 跳转到页码",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "pdfLocal.toggleRegion",
+        "title": "PDF Local Copilot: 切换文字选择与区域框选",
+        "icon": "$(selection)"
+      },
+      {
+        "command": "pdfLocal.zoomIn",
+        "title": "PDF Local Copilot: 放大论文",
+        "icon": "$(zoom-in)"
+      },
+      {
+        "command": "pdfLocal.zoomOut",
+        "title": "PDF Local Copilot: 缩小论文",
+        "icon": "$(zoom-out)"
+      },
+      {
+        "command": "pdfLocal.fit",
+        "title": "PDF Local Copilot: 适应页面宽度",
+        "icon": "$(screen-normal)"
+      },
+      {
+        "command": "pdfLocal.difference",
+        "title": "PDF Local Copilot: 查看当前修改差异",
+        "icon": "$(git-compare)",
+        "enablement": "pdfLocal.hasTask"
+      },
+      {
+        "command": "pdfLocal.logs",
+        "title": "PDF Local Copilot: 查看执行和编译日志",
+        "icon": "$(output)"
+      },
+      {
+        "command": "pdfLocal.undoApplication",
+        "title": "PDF Local Copilot: 撤回本轮修改",
+        "icon": "$(discard)",
+        "enablement": "pdfLocal.hasUndo && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.rebuild",
+        "title": "PDF Local Copilot: 构建 PDF 与参考文献",
+        "icon": "$(refresh)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.nextChange",
+        "title": "PDF Local Copilot: 下一处修改",
+        "icon": "$(diff-single)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.previousChange",
+        "title": "PDF Local Copilot: 上一处修改",
+        "icon": "$(arrow-up)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.acceptEdit",
+        "title": "PDF Local Copilot: 接受此处修改",
+        "icon": "$(check)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.rejectEdit",
+        "title": "PDF Local Copilot: 拒绝此处修改",
+        "icon": "$(discard)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.reviewEdit",
+        "title": "PDF Local Copilot: 查看此处修改",
+        "icon": "$(comment-discussion)",
+        "enablement": "pdfLocal.hasTask"
+      },
+      {
+        "command": "pdfLocal.newSession",
+        "title": "PDF Local Copilot: 新建论文会话",
+        "icon": "$(comment-add)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.manuscript",
+        "title": "PDF Local Copilot: 查看当前论文",
+        "icon": "$(history)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.proposal",
+        "title": "PDF Local Copilot: 显示当前工作稿",
+        "icon": "$(preview)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.addClaudeAgent",
+        "title": "PDF Local Copilot: 新增 Claude 代理",
+        "icon": "$(add)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.pdfPosition",
+        "title": "PDF Local Copilot: 跳转到对应 PDF 位置",
+        "icon": "$(go-to-file)",
+        "enablement": "resourceScheme == file && resourceExtname == .tex"
+      },
+      {
+        "command": "pdfLocal.refreshReview",
+        "title": "PDF Local Copilot: 刷新本次修改",
+        "icon": "$(refresh)",
+        "enablement": "pdfLocal.hasTask && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.selectAllNotes",
+        "title": "PDF Local Copilot: 全选批注",
+        "icon": "$(check-all)",
+        "enablement": "pdfLocal.hasPaper && pdfLocal.hasOpenNotes"
+      },
+      {
+        "command": "pdfLocal.sendSelectedNotes",
+        "title": "PDF Local Copilot: 发送已选批注",
+        "icon": "$(send)",
+        "enablement": "pdfLocal.hasPaper && pdfLocal.hasSelectedNotes"
+      },
+      {
+        "command": "pdfLocal.acceptSelectedEdits",
+        "title": "PDF Local Copilot: 接受已选修改",
+        "icon": "$(check)",
+        "enablement": "pdfLocal.hasTask && pdfLocal.hasSelectedEdits && !pdfLocal.running"
+      },
+      {
+        "command": "pdfLocal.refreshHistory",
+        "title": "PDF Local Copilot: 刷新本地修改历史",
+        "icon": "$(refresh)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.historyDiff",
+        "title": "PDF Local Copilot: 查看本地历史差异",
+        "icon": "$(diff)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "pdfLocal.open",
+          "when": "resourceExtname == .tex || resourceExtname == .pdf",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "pdfLocal.stop",
+          "when": "view == pdfLocal.notes && pdfLocal.running",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pdfLocal.compare",
+          "when": "view == pdfLocal.changes && pdfLocal.hasTask",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pdfLocal.acceptSelectedEdits",
+          "when": "view == pdfLocal.changes && pdfLocal.hasTask",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pdfLocal.endTask",
+          "when": "view == pdfLocal.changes && pdfLocal.hasTask",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pdfLocal.refreshReview",
+          "when": "view == pdfLocal.changes && pdfLocal.hasTask",
+          "group": "navigation@0"
+        },
+        {
+          "command": "pdfLocal.selectAllNotes",
+          "when": "view == pdfLocal.notes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pdfLocal.sendSelectedNotes",
+          "when": "view == pdfLocal.notes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pdfLocal.apply",
+          "when": "view == pdfLocal.changes && pdfLocal.hasTask",
+          "group": "review@2"
+        },
+        {
+          "command": "pdfLocal.refreshHistory",
+          "when": "view == pdfLocal.history",
+          "group": "navigation@0"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "pdfLocal.source",
+          "when": "view == pdfLocal.notes && viewItem == pdfLocal.note",
+          "group": "inline@1"
+        },
+        {
+          "command": "pdfLocal.editNote",
+          "when": "view == pdfLocal.notes && viewItem == pdfLocal.note",
+          "group": "inline@2"
+        },
+        {
+          "command": "pdfLocal.deleteNote",
+          "when": "view == pdfLocal.notes && viewItem == pdfLocal.note",
+          "group": "inline@3"
+        },
+        {
+          "command": "pdfLocal.diff",
+          "when": "view == pdfLocal.changes && viewItem == pdfLocal.change",
+          "group": "inline@1"
+        },
+        {
+          "command": "pdfLocal.reject",
+          "when": "view == pdfLocal.changes && viewItem == pdfLocal.change",
+          "group": "inline@2"
+        },
+        {
+          "command": "pdfLocal.acceptEdit",
+          "when": "view == pdfLocal.changes && viewItem == pdfLocal.edit",
+          "group": "inline@1"
+        },
+        {
+          "command": "pdfLocal.rejectEdit",
+          "when": "view == pdfLocal.changes && viewItem == pdfLocal.edit",
+          "group": "inline@2"
+        },
+        {
+          "command": "pdfLocal.diff",
+          "when": "view == pdfLocal.changes && viewItem == pdfLocal.edit",
+          "group": "inline@3"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "pdfLocal.open",
+          "when": "resourceScheme == file && resourceExtname == .tex",
+          "group": "navigation@0"
+        },
+        {
+          "command": "pdfLocal.previousPage",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pdfLocal.nextPage",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pdfLocal.toggleRegion",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pdfLocal.run",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "navigation@4"
+        },
+        {
+          "command": "pdfLocal.compare",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_paper@1"
+        },
+        {
+          "command": "pdfLocal.difference",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_paper@2"
+        },
+        {
+          "command": "pdfLocal.zoomIn",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "2_zoom@1"
+        },
+        {
+          "command": "pdfLocal.zoomOut",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "2_zoom@2"
+        },
+        {
+          "command": "pdfLocal.fit",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "2_zoom@3"
+        },
+        {
+          "command": "pdfLocal.selectPage",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "2_zoom@4"
+        },
+        {
+          "command": "pdfLocal.logs",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "3_logs@1"
+        },
+        {
+          "command": "pdfLocal.nextChange",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@1"
+        },
+        {
+          "command": "pdfLocal.previousChange",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@2"
+        },
+        {
+          "command": "pdfLocal.apply",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@3"
+        },
+        {
+          "command": "pdfLocal.undoApplication",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@4"
+        },
+        {
+          "command": "pdfLocal.rebuild",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@5"
+        },
+        {
+          "command": "pdfLocal.manuscript",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@10"
+        },
+        {
+          "command": "pdfLocal.proposal",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@11"
+        },
+        {
+          "command": "pdfLocal.newSession",
+          "when": "activeWebviewPanelId == pdfLocal.paper",
+          "group": "1_review@12"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "pdfLocal.acceptEdit",
+          "when": "webviewId == pdfLocal.paper && webviewSection == reviewChange",
+          "group": "paper@1"
+        },
+        {
+          "command": "pdfLocal.rejectEdit",
+          "when": "webviewId == pdfLocal.paper && webviewSection == reviewChange",
+          "group": "paper@2"
+        },
+        {
+          "command": "pdfLocal.nextChange",
+          "when": "webviewId == pdfLocal.paper",
+          "group": "paper@3"
+        },
+        {
+          "command": "pdfLocal.previousChange",
+          "when": "webviewId == pdfLocal.paper",
+          "group": "paper@4"
+        },
+        {
+          "command": "pdfLocal.run",
+          "when": "webviewId == pdfLocal.paper",
+          "group": "paper@5"
+        },
+        {
+          "command": "pdfLocal.apply",
+          "when": "webviewId == pdfLocal.paper",
+          "group": "paper@6"
+        },
+        {
+          "command": "pdfLocal.undoApplication",
+          "when": "webviewId == pdfLocal.paper",
+          "group": "paper@7"
+        },
+        {
+          "command": "pdfLocal.toggleRegion",
+          "when": "webviewId == pdfLocal.paper",
+          "group": "paper@8"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "pdfLocal.pdfPosition",
+          "when": "resourceScheme == file && resourceExtname == .tex",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PDF Local Copilot",
+      "properties": {
+        "pdfLocal.texpressoPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Headless TeXpresso executable. Empty uses this extension's local native build."
+        },
+        "pdfLocal.codexPath": {
+          "type": "string",
+          "default": "codex",
+          "scope": "machine",
+          "description": "Local Codex executable path."
+        },
+        "pdfLocal.claudePath": {
+          "type": "string",
+          "default": "claude",
+          "scope": "machine",
+          "description": "Local Claude Code executable path."
+        },
+        "pdfLocal.buildSteps": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "description": "在 latexmk 之前执行的项目构建步骤。参数可使用 ${workspaceFolder}，会解析到当前项目目录。",
+          "items": {
+            "type": "object",
+            "required": [
+              "command",
+              "args"
+            ],
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "pdfLocal.agents": {
+          "type": "array",
+          "default": [],
+          "scope": "machine",
+          "description": "自定义代理。Claude 类型可指定独立的 claude_config_dir；每个代理分别保存会话。",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "codex",
+                  "claude"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "claude_config_dir": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pdfLocal",
+          "title": "Paper",
+          "icon": "media/paper.svg"
+        }
+      ]
+    },
+    "views": {
+      "pdfLocal": [
+        {
+          "id": "pdfLocal.notes",
+          "name": "PDF 批注"
+        },
+        {
+          "id": "pdfLocal.changes",
+          "name": "本次修改"
+        },
+        {
+          "id": "pdfLocal.history",
+          "name": "本地修改历史",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "pdfLocal.notes",
+        "contents": "在论文页面上选中文字或框选区域，添加批注。\n[打开 LaTeX 主文件](command:pdfLocal.open)",
+        "when": "!pdfLocal.hasPaper"
+      },
+      {
+        "view": "pdfLocal.changes",
+        "contents": "在 PDF 上点击编号修改标记，逐处接受、拒绝或补充批注。侧栏用于导航。",
+        "when": "!pdfLocal.hasTask"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "pdfLocal.paper",
+        "displayName": "Paper PDF 批注",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "option"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "test:host": "node scripts/test-host.mjs",
+    "test:ui": "npm run build && node scripts/test-ui.mjs",
+    "native:build": "node scripts/build-native.mjs",
+    "package": "npm run build && vsce package --target darwin-arm64 --no-dependencies --out artifacts/pdf-local-copilot-0.5.9.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/vscode": "^1.96.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.64.1",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "diff": "^9.0.0"
+  },
+  "activationEvents": [
+    "onWebviewPanel:pdfLocal.paper",
+    "onWebviewPanel:pdfLocal.chat"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wyxu95/pdf-local-copilot.git"
+  },
+  "homepage": "https://github.com/wyxu95/pdf-local-copilot#readme",
+  "bugs": {
+    "url": "https://github.com/wyxu95/pdf-local-copilot/issues"
+  },
+  "author": "Wenyuan Xu"
+}

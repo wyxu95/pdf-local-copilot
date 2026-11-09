@@ -1,0 +1,10 @@
+**
+!package.json
+!README.md
+!README.zh-CN.md
+!docs/**
+!LICENSE
+!THIRD_PARTY_NOTICES.md
+!dist/**
+!native/**
+!media/**

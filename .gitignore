@@ -1,0 +1,13 @@
+node_modules/
+dist/
+native/
+vendor/
+artifacts/
+output/
+*.log
+.vscode-test/
+.playwright-cli/
+.pdf-local-copilot/
+.DS_Store
+.env
+.env.*

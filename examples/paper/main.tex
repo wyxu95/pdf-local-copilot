@@ -1,0 +1,37 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=28mm]{geometry}
+\usepackage{amsmath}
+\usepackage[colorlinks=true]{hyperref}
+\title{A Paper You Can Talk To}
+\author{Local Copilot Demo}
+\date{}
+\begin{document}
+\maketitle
+\begin{abstract}
+This paper demonstrates a local workflow for revising scientific documents.
+The author selects a passage in the rendered paper, explains a desired change,
+and reviews source diffs alongside the current rendered manuscript.
+\end{abstract}
+\section{Introduction}
+Reading and editing are often separated by an inconvenient translation step.
+A researcher notices a problem on the page but must find its source before
+making a revision. We bring the revision request directly to the document.
+
+Our approach makes the writing process more better and very efficient.
+This sentence is intentionally awkward: select it and ask the local agent
+to make it concise while preserving its meaning.
+
+\section{An Example Equation}
+For observations $x_1,\ldots,x_n$, we define the empirical mean as
+\begin{equation}
+  \bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i.
+  \label{eq:mean}
+\end{equation}
+Use region selection to annotate Equation~\ref{eq:mean}.
+For example, ask the agent to explain what $n$ represents.
+
+\section{Review Before Applying}
+Each revision edits the current project. The live preview follows
+the source as the local agent edits it. The author can compare versions,
+open source differences, and accept individual changes.
+\end{document}

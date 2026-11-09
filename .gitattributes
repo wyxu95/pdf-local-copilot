@@ -1,0 +1,2 @@
+# Patch context preserves the upstream whitespace; validate the patched C diff.
+*.patch -whitespace
