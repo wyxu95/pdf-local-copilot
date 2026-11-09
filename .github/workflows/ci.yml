@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,3 +31,33 @@ jobs:
           test/local-history.test.ts test/review.test.ts test/project-ignore.test.ts
           test/default-language.test.ts
           test/reference-geometry.test.ts
+          test/view-geometry.test.ts
+
+  vsix:
+    name: macOS ARM64 VSIX
+    needs: extension
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify target architecture
+        run: node -e "if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('This package requires a macOS ARM64 runner.')"
+      - name: Install native build dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: brew install mupdf-tools sdl2 pkgconf harfbuzz freetype graphite2 fontconfig libpng icu4c@78 re2c
+      - run: npm ci
+      - run: npm run native:build
+      - run: npm run package
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pdf-local-copilot-darwin-arm64
+          path: artifacts/*.vsix
+          if-no-files-found: error
+          compression-level: 0
