@@ -32,11 +32,24 @@ if (process.platform === 'darwin') {
 }
 run('make', args);
 const native = path.join(root, 'native'); await mkdir(native, { recursive: true });
+let sdl2Library;
 for (const binary of ['texpresso', 'texpresso-xetex']) {
   const temporary = path.join(native, `${binary}.new-${process.pid}`);
-  await copyFile(path.join(source, 'build', binary), temporary); await chmod(temporary, 0o755); await rename(temporary, path.join(native, binary));
+  await copyFile(path.join(source, 'build', binary), temporary); await chmod(temporary, 0o755);
+  if (process.platform === 'darwin') {
+    const libraries = execFileSync('/usr/bin/otool', ['-L', temporary], { encoding: 'utf8' });
+    const library = libraries.match(/(\/(?:opt\/homebrew|usr\/local)\/opt\/sdl2(?:-compat)?\/lib\/libSDL2[^\s]+\.dylib)/)?.[1];
+    if (library) {
+      // Both classic SDL2 and sdl2-compat expose this shared Homebrew link.
+      sdl2Library = library.replace(/\/opt\/sdl2(?:-compat)?\/lib\//, '/lib/');
+      await access(sdl2Library);
+      run('/usr/bin/install_name_tool', ['-change', library, sdl2Library, temporary]);
+      run('/usr/bin/codesign', ['--force', '--sign', '-', temporary]);
+    }
+  }
+  await rename(temporary, path.join(native, binary));
 }
 await copyFile(path.join(source, 'LICENSE'), path.join(native, 'TEXPRESSO-LICENSE'));
 const capabilities = execFileSync(path.join(native, 'texpresso'), ['-capabilities'], { encoding: 'utf8' });
-await writeFile(path.join(native, 'build.json'), JSON.stringify({ platform: process.platform, arch: process.arch, revision, textLayerPatch: true, pdfLinksPatch: true, linkGeometryPatch: true, unicodePatch: true, formatCachePatch: true, capabilities: JSON.parse(capabilities), note: 'Built against this host’s installed native libraries. Rebuild on a different host.' }, null, 2));
+await writeFile(path.join(native, 'build.json'), JSON.stringify({ platform: process.platform, arch: process.arch, revision, textLayerPatch: true, pdfLinksPatch: true, linkGeometryPatch: true, unicodePatch: true, formatCachePatch: true, ...(sdl2Library ? { sdl2Library } : {}), capabilities: JSON.parse(capabilities), note: 'Built against this host’s installed native libraries. Rebuild on a different host.' }, null, 2));
 console.log(`Native build ready: ${native}`);

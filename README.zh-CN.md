@@ -27,12 +27,12 @@ Windows 上继续使用 Windows 版 VS Code。先用 **WSL: Reopen Folder in WSL
 也可以按 [源码构建步骤](README.md#build-and-install) 构建当前平台的包，例如 Mac ARM64：
 
 ```sh
-code --install-extension artifacts/pdf-local-copilot-0.8.2-darwin-arm64.vsix
+code --install-extension artifacts/pdf-local-copilot-0.8.3-darwin-arm64.vsix
 ```
 
-Mac 桌面版与 Remote SSH 后端分别维护扩展安装。在 Mac 上的仓库目录运行 `npm run install:mac -- artifacts/pdf-local-copilot-0.8.2-darwin-arm64.vsix`，可为两端安装并核验同一个构建，随后在两个窗口执行 **Developer: Reload Window**。
+Mac 桌面版与 Remote SSH 后端分别维护扩展安装。在 Mac 上的仓库目录运行 `npm run install:mac -- artifacts/pdf-local-copilot-0.8.3-darwin-arm64.vsix`，可为两端安装并核验同一个构建，随后在两个窗口执行 **Developer: Reload Window**。
 
-推送与 `package.json` 版本一致的标签（例如 `v0.8.2`）会构建三种平台的包，并在所有目标成功后发布到 Releases。运行插件的后端仍需安装相应的原生库和 TeX 环境。
+推送与 `package.json` 版本一致的标签（例如 `v0.8.3`）会构建三种平台的包，并在所有目标成功后发布到 Releases。运行插件的后端仍需安装相应的原生库和 TeX 环境。
 
 打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
 
@@ -171,7 +171,7 @@ npm run check
 npm test
 npm run test:ui
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.8.2-darwin-arm64.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.8.3-darwin-arm64.vsix npm run test:ui
 ```
 
 UI 测试使用隔离的 VS Code 配置与真实 TeXpresso / TeX Live，覆盖真实目录写入、差异备份、旧任务迁移、TeX Diff 与 PDF 联动、其他文本 Diff、批注来源／清理／追问、整轮撤回和连续会话。截图在 `output/playwright/`。

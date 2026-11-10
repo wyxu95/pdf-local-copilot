@@ -3,6 +3,10 @@
 The extension uses a pinned source checkout and five small patches, managed by
 [`scripts/build-native.mjs`](../scripts/build-native.mjs).
 
+On macOS, the build driver links SDL2 through Homebrew's shared library path and
+refreshes the executable's ad-hoc signature. Both classic SDL2 and sdl2-compat
+installations provide this path.
+
 ## Source identity
 
 - Original project: <https://github.com/let-def/texpresso>

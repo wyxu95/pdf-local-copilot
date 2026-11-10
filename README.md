@@ -107,7 +107,7 @@ npm ci
 npm run native:build
 npm run check
 npm run package
-code --install-extension artifacts/pdf-local-copilot-0.8.2-darwin-arm64.vsix
+code --install-extension artifacts/pdf-local-copilot-0.8.3-darwin-arm64.vsix
 ```
 
 ### Download a release
@@ -118,7 +118,7 @@ Choose `darwin-arm64`, `linux-x64`, or `linux-arm64` to match the workspace host
 Connect the window to WSL or SSH before installing a remote package. Run
 **PDF Local Copilot: Check Setup** to inspect the backend host and its tools.
 
-Pushing a version tag matching `package.json`, such as `v0.8.2`, runs the
+Pushing a version tag matching `package.json`, such as `v0.8.3`, runs the
 [Release workflow](.github/workflows/release.yml): it checks TypeScript, builds
 the native engines, tests the Linux backends, and uploads each VSIX directly to
 a draft GitHub Release. The release becomes public after every target succeeds.
@@ -135,7 +135,7 @@ After pulling changes, rebuild with `npm ci`, `npm run native:build`, and `npm r
 
 For a Mac used both directly and through Remote SSH, install and verify the same
 build in both extension stores with
-`npm run install:mac -- artifacts/pdf-local-copilot-0.8.2-darwin-arm64.vsix`.
+`npm run install:mac -- artifacts/pdf-local-copilot-0.8.3-darwin-arm64.vsix`.
 Reload both windows. **Check Setup** reports the version and installation path
 used by each window.
 
@@ -231,7 +231,7 @@ To test the packaged extension:
 
 ```sh
 npm run package
-PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.8.2-darwin-arm64.vsix npm run test:ui
+PDF_COPILOT_VSIX=artifacts/pdf-local-copilot-0.8.3-darwin-arm64.vsix npm run test:ui
 ```
 
 The GitHub workflow checks TypeScript, bundles the extension, and runs a selected native-independent test set. Full rendering/UI verification requires the native engine and TeX installation described above.
