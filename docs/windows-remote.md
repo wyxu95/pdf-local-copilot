@@ -85,6 +85,22 @@ For example, with Windows VS Code connected to a Mac:
 - PDF selections, annotations, chat, diffs, and source navigation are displayed
   in the Windows VS Code window.
 
+## Keep Mac desktop and Remote SSH versions aligned
+
+Mac desktop VS Code and VS Code Server have separate extension installations.
+Update both with the same Mac VSIX. From a checkout of this repository on the Mac,
+run:
+
+```sh
+npm run install:mac -- /path/to/pdf-local-copilot-VERSION-darwin-arm64.vsix
+```
+
+The command installs the same archive in desktop VS Code and the available Remote
+SSH server installation, verifies both installed versions, and keeps their settings
+and extension stores independent. Reload both windows after installation.
+**PDF Local Copilot: Check Setup** shows the version, backend host, and installation
+path for the window in which it runs.
+
 ## Agent profiles and paths
 
 Run **Preferences: Open Remote Settings** to configure paths for that endpoint.

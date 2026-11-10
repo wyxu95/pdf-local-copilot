@@ -1,8 +1,10 @@
 /* PDF pages, margin annotations, and hit testing. Workspace actions stay in VS Code. */
 import { horizontalCrop, inkBounds, surfaceTransform, sourcePoint, textLines, lineCaret, textCaret, quoteGeometry, placeOverlayLabels } from '../src/view-geometry';
 import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds } from '../src/reference-preview';
+import { restoreFrame } from '../src/frame-cache';
 (() => {
   const vscode = acquireVsCodeApi(), viewport = document.querySelector('#viewport'), pages = document.querySelector('#pages');
+  const viewId = crypto.randomUUID();
   const state = {
     side: 'before', meta: { before: null, after: null }, frames: { before: new Map(), after: new Map() },
     rows: new Map(), notes: [], markers: { before: [], after: [] }, draft: null, edits: new Map(),
@@ -13,7 +15,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
   let documentState = vscode.getState() || {};
   const make = (tag, className, text) => { const element = document.createElement(tag); element.className = className; if (text !== undefined) element.textContent = text; return element; };
   const key = (side, page, session) => `${side}:${page}:${session}`;
-  const version = frame => `${frame.side}:${frame.session}:${frame.header.sequence}:${frame.header.revision}`;
+  const version = frame => `${frame.side}:${frame.session}:${frame.header.sequence}:${frame.header.revision}:${frame.imageId}:${frame.layoutId}`;
   const fresh = (side, frame) => {
     const meta = state.meta[side];
     return !!frame && !!meta && !meta.pending && frame.session === meta.session && frame.header.sequence === meta.sequence && frame.header.revision === meta.revision;
@@ -116,6 +118,9 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     const meta = state.meta[message.side]; if (!meta || message.session !== meta.session) return;
     const previous = state.frames[message.side].get(message.header.page);
     if (previous && (previous.header.sequence > message.header.sequence || previous.header.sequence === message.header.sequence && previous.header.revision > message.header.revision)) return;
+    const restored = restoreFrame(message, previous);
+    if (!restored) { send({ type: 'imageMissing', viewId, side: message.side, session: message.session, page: message.header.page }); return; }
+    message = restored;
     state.frames[message.side].set(message.header.page, message);
     if (message.side === state.side) {
       ensureRows(message.header.page + 1);
@@ -125,6 +130,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
   }
   function drawPage(record, frame) {
     const nextKey = version(frame), b = frame.header.bounds;
+    if (record.renderKey === nextKey) record.frame = frame;
     record.paper.classList.toggle('region-mode', state.tool === 'region');
     if (record.renderKey !== nextKey && record.pendingKey !== nextKey) {
       record.pendingKey = nextKey;
@@ -705,6 +711,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
       if (message.side === state.side) { ensureRows(); for (const record of state.rows.values()) record.paper.classList.toggle('stale', !fresh(state.side, record.frame)); requestVisible(); }
       pump();
     } else if (message.type === 'frame' || message.type === 'pageFrame') {
+      if (message.viewId !== viewId) return;
       putFrame(message);
       if (message.type === 'pageFrame' && state.pending?.key === key(message.side, message.header.page, message.session)) state.pending = null;
       pump();
@@ -773,5 +780,5 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
     else if (message.type === 'reportVisiblePage') { onScroll(); requestAnimationFrame(() => send({ type: 'visiblePage', page: state.currentPage })); }
     else if (message.type === 'error') { const loading = pages.querySelector('.page-loading'); if (loading) loading.textContent = message.message; }
   });
-  ensureRows(); send({ type: 'ready' });
+  ensureRows(); send({ type: 'ready', viewId });
 })();

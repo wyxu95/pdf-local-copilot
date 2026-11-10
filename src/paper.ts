@@ -22,6 +22,7 @@ import { LocalHistory, type HistoryPoint } from './local-history';
 import { historyUri } from './history-files';
 import { displayHistoryLabel } from './history-label';
 import { gitHead, committedReviewFiles, acceptCommittedReview } from './commit-review';
+import { FrameDelivery } from './frame-delivery';
 
 interface UI {
   output: vscode.OutputChannel; diagnostics: vscode.DiagnosticCollection;
@@ -49,6 +50,7 @@ export class Paper {
   private diagnosticFiles = new Set<string>();
   private sourceGeneration = 0;
   private previewSessions = { before: 0, after: 0 };
+  private frameDeliveries = new WeakMap<vscode.WebviewPanel, FrameDelivery>();
   private mainViewSide: 'before' | 'after' = 'before';
   private sourceGroup?: vscode.TabGroup;
   private pendingChatFocus?: { draft?: string };
@@ -89,6 +91,7 @@ export class Paper {
   private createPanel(side: 'before' | 'after' | 'chat', column: vscode.ViewColumn, supplied?: vscode.WebviewPanel, preserveFocus = false) {
     const chatOnly = side === 'chat';
     const panel = supplied || vscode.window.createWebviewPanel(chatOnly ? 'pdfLocal.chat' : 'pdfLocal.paper', '', { viewColumn: column, preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
+    this.frameDeliveries.delete(panel);
     const panelSide = (): 'before' | 'after' => chatOnly || panel === this.panel ? this.mainViewSide : side as 'before' | 'after';
     panel.title = `${chatOnly ? 'Paper Chat' : side === 'before' ? 'Paper' : 'Working Draft'} · ${path.basename(this.main)}`;
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
@@ -96,6 +99,14 @@ export class Paper {
     this.resources.push(panel.onDidChangeViewState(e => { if (e.webviewPanel.active) { this.currentSide = panelSide(); this.ui.activate(this); if (chatOnly) this.flushChatActions(); else this.post(panel, { type: 'reportVisiblePage' }); } else if (!chatOnly) this.post(panel, { type: 'dismissReview' }); }));
     this.resources.push(panel.webview.onDidReceiveMessage(m => {
       const side = panelSide();
+      if (m.type === 'ready' && typeof m.viewId === 'string') this.frameDeliveries.set(panel, new FrameDelivery(m.viewId));
+      if (m.type === 'imageMissing') {
+        const delivery = this.frameDeliveries.get(panel);
+        if (delivery && delivery.viewId === m.viewId && (m.side === 'before' || m.side === 'after') && m.session === this.previewSessions[m.side as 'before' | 'after']) {
+          delivery.forget(m.side, m.page); void this.sendPage(panel, m.side, m.page, m.session, true);
+        }
+        return;
+      }
       if (m.type === 'pageRelative') { this.currentSide = side; this.ui.activate(this); void this.showPage(this.page + (m.delta > 0 ? 1 : -1)).catch(this.ui.report); return; }
       if (m.type === 'requestPage') { void this.sendPage(panel, m.side === 'before' || m.side === 'after' ? m.side : side, m.page, m.session); return; }
       if (m.type === 'visiblePage' && Number.isInteger(m.page) && m.page >= 0 && m.page <= 10000) { if (panel.active || panel === this.panel && panel.visible) { this.currentSide = side; this.page = m.page; this.ui.activate(this); } return; }
@@ -128,7 +139,7 @@ export class Paper {
       if (m.type === 'undoWorkingChanges') { void this.undo().catch(e => this.both({ type: 'chatError', message: String(e) })); return; }
       this.serial = this.serial.then(async () => {
         this.currentSide = side; this.ui.activate(this);
-        if (m.type === 'ready') this.syncPanel(panel, side);
+        if (m.type === 'ready') this.syncPanel(panel, side, true);
         else if (m.type === 'annotate') await this.annotate(m, side);
         else if (m.type === 'reviewChange' && typeof m.id === 'string') this.showReviewCard(m.id, panel);
         else if (m.type === 'reviewDecision' && typeof m.id === 'string' && ['accepted', 'rejected', 'pending'].includes(m.decision)) { await this.setDecision(m.id, m.decision); this.post(panel, { type: 'reviewDecisionDone', id: m.id }); }
@@ -151,26 +162,30 @@ export class Paper {
     return panel;
   }
   private post(panel: vscode.WebviewPanel | undefined, value: object) { if (!this.disposed && panel) void panel.webview.postMessage(value); }
+  private postFrame(panel: vscode.WebviewPanel | undefined, type: 'frame' | 'pageFrame', side: 'before' | 'after', session: number, frame: Frame, forceImage = false) {
+    const delivery = panel && this.frameDeliveries.get(panel);
+    if (delivery) this.post(panel, delivery.encode(type, side, session, frame, forceImage));
+  }
   private panelFor(side: 'before' | 'after') { return side === this.mainViewSide ? this.panel : this.proposalPanel; }
   private both(value: object) {
     const type = (value as { type: string }).type;
     if (type !== 'agentOutput') { this.post(this.panel, value); this.post(this.proposalPanel, value); }
     if (['chatState', 'agentOutput', 'chatSent', 'chatError'].includes(type)) this.post(this.chatPanel, value);
   }
-  private syncPanel(panel: vscode.WebviewPanel, side: string) {
+  private syncPanel(panel: vscode.WebviewPanel, side: string, forceImage = false) {
     const chatOnly = panel === this.chatPanel;
     this.post(panel, { type: 'init', root: this.root, main: this.main, page: this.page, side, tool: this.tool, zoom: this.zoomLevel, hasTask: !!this.task, notes: this.notes, difference: this.difference, markers: this.markers, chatVisible: chatOnly, chatOnly });
     if (chatOnly) { this.chatReady = true; this.post(panel, { type: 'chatState', ...this.chatState() }); this.flushChatActions(); return; }
     for (const [s, preview] of [['before', this.before], ['after', this.after]] as const) if (preview?.lastFrame) {
       this.post(panel, { type: 'previewState', side: s, session: this.previewSessions[s], ...preview.snapshot() });
-      this.post(panel, { type: 'frame', side: s, session: this.previewSessions[s], header: preview.lastFrame.header, data: preview.lastFrame.bytes.toString('base64') });
+      this.postFrame(panel, 'frame', s, this.previewSessions[s], preview.lastFrame, forceImage);
     }
     this.post(panel, { type: 'chatState', ...this.chatState() });
   }
-  private async sendPage(panel: vscode.WebviewPanel, side: 'before' | 'after', page: number, session: number) {
+  private async sendPage(panel: vscode.WebviewPanel, side: 'before' | 'after', page: number, session: number, forceImage = false) {
     if (!Number.isInteger(page) || page < 0 || page > 10000 || session !== this.previewSessions[side]) return;
     const preview = side === 'before' ? this.before : this.after; if (!preview) return;
-    try { const frame = await preview.readPage(page); if (session === this.previewSessions[side]) this.post(panel, { type: 'pageFrame', side, session, header: frame.header, data: frame.bytes.toString('base64') }); }
+    try { const frame = await preview.readPage(page); if (session === this.previewSessions[side]) this.postFrame(panel, 'pageFrame', side, session, frame, forceImage); }
     catch (e) { if (session === this.previewSessions[side]) this.post(panel, { type: 'pageError', side, session, page, message: e instanceof Error ? e.message : String(e) }); }
   }
   private async referenceAction(message: { type: string; requestId: number; session: number; sequence: number; revision: number; page: number; linkIndex: number; bounds?: number[]; width?: number }, panel: vscode.WebviewPanel, side: 'before' | 'after', generation: number) {
@@ -368,7 +383,7 @@ export class Paper {
   private createPreview(side: 'before' | 'after', root: string, main: string, build: BuildManager, pdf?: string) {
     const session = ++this.previewSessions[side]; this.both({ type: 'previewReset', side, session });
     return new LivePreview(this.binary(), root, main, {
-      frame: frame => { this.both({ type: 'frame', side, session, header: frame.header, data: frame.bytes.toString('base64') }); this.scheduleMarkers(side, session, frame.header.sequence, frame.header.revision); },
+      frame: frame => { this.postFrame(this.panel, 'frame', side, session, frame); this.postFrame(this.proposalPanel, 'frame', side, session, frame); this.scheduleMarkers(side, session, frame.header.sequence, frame.header.revision); },
       state: value => {
         const previous = this.totals[side]; this.both({ type: 'previewState', side, session, ...value });
         this.totals[side] = { pages: value.pages, complete: value.complete }; this.pageCount = this.task ? Math.max(this.totals.before.pages, this.totals.after.pages) : value.pages;

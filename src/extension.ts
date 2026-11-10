@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
   const setupOutput = vscode.window.createOutputChannel('PDF Local Copilot Setup'); context.subscriptions.push(setupOutput);
   register('checkSetup', async () => {
     setupOutput.clear(); setupOutput.show(true);
-    setupOutput.appendLine(`Backend: ${process.platform}-${process.arch}\nConnection: ${vscode.env.remoteName || 'local'}\nExtension: ${context.extensionPath}`);
+    setupOutput.appendLine(`Version: ${context.extension.packageJSON.version}\nBackend: ${process.platform}-${process.arch}\nConnection: ${vscode.env.remoteName || 'local'}\nExtension: ${context.extensionPath}`);
     if (process.platform === 'win32') { setupOutput.appendLine('Open a WSL or Remote SSH window and install the VSIX matching that host. TeXpresso and the agent CLIs run on the workspace host.'); return; }
     const configuration = vscode.workspace.getConfiguration('pdfLocal');
     const tools = await inspectTools([
