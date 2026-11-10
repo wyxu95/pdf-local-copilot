@@ -1,0 +1,116 @@
+diff --git a/src/engine/main/main.c b/src/engine/main/main.c
+index 05c6a06..7f776dd 100644
+--- a/src/engine/main/main.c
++++ b/src/engine/main/main.c
+@@ -10,6 +10,8 @@
+ #include <sys/stat.h>
+ #include <time.h>
+ #include <unistd.h>
++#include <fcntl.h>
++#include <errno.h>
+ #include "formats.h"
+ #include "tectonic_bridge_core.h"
+ #include "tectonic_bridge_core_generated.h"
+@@ -48,6 +50,7 @@ FILE *dependency_tape;
+ 
+ // Name of the format to use
+ const char *format_name;
++static bool generating_format;
+ 
+ static const char *format_path(const char *ext);
+ 
+@@ -883,12 +886,14 @@ static void usage(char *argv0)
+ 
+ static const char *format_path(const char *ext)
+ {
+-  char prefix[64];
++  char prefix[64], temporary[48] = "";
+   snprintf(prefix, sizeof prefix, "%s-v%d-", use_texlive ? "texlive" : "tectonic", FORMAT_SERIAL);
++  if (generating_format && ext && (!strcmp(ext, ".fmt") || !strcmp(ext, ".deps")))
++    snprintf(temporary, sizeof temporary, ".tmp-%ld", (long)getpid());
+   if (!ext || (*ext == '.' || *ext == '-'))
+-    return cache_path("format", prefix, format_name, ext);
++    return cache_path("format", prefix, format_name, ext, temporary);
+   else
+-    return cache_path("format", prefix, format_name, "-", ext);
++    return cache_path("format", prefix, format_name, "-", ext, temporary);
+ }
+ 
+ static bool validate_format(void)
+@@ -923,13 +928,20 @@ static bool validate_format(void)
+ 
+ static bool bootstrap_format(void)
+ {
++  generating_format = true;
+   const char *path = format_path(".deps");
+   if (!path)
++  {
++    generating_format = false;
+     return 0;
++  }
+ 
+   dependency_tape = fopen(path, "wb");
+   if (!dependency_tape)
++  {
++    generating_format = false;
+     return 0;
++  }
+ 
+   if (use_tectonic)
+   {
+@@ -968,12 +980,44 @@ static bool bootstrap_format(void)
+       break;
+   }
+ 
+-  if (result != HISTORY_SPOTLESS)
+-    unlink(format_path(".fmt"));
++  // Publish complete files while the startup lock excludes other validators.
++  // Existing readers keep their open format even during forced regeneration.
++  const char *extensions[] = {".fmt", ".deps"};
++  for (unsigned i = 0; i < 2; i++)
++  {
++    char temporary[PATH_MAX + 1];
++    strcpy(temporary, format_path(extensions[i]));
++    generating_format = false;
++    if (result == HISTORY_SPOTLESS && rename(temporary, format_path(extensions[i])) != 0)
++    {
++      perror("Publishing TeXpresso format");
++      result = HISTORY_FATAL_ERROR;
++    }
++    unlink(temporary);
++    generating_format = true;
++  }
++  generating_format = false;
+ 
+   return (result == HISTORY_SPOTLESS);
+ }
+ 
++static bool prepare_format(void)
++{
++  const char *path = format_path(".lock");
++  if (!path) return false;
++  int fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
++  if (fd < 0) { perror("Opening TeXpresso format lock"); return false; }
++  struct flock lock = {.l_type = F_WRLCK, .l_whence = SEEK_SET};
++  while (fcntl(fd, F_SETLKW, &lock) < 0)
++  {
++    if (errno == EINTR) continue;
++    perror("Locking TeXpresso format"); close(fd); return false;
++  }
++  bool ready = validate_format() || bootstrap_format();
++  close(fd);
++  return ready;
++}
++
+ int main(int argc, char **argv)
+ {
+   const char *doc_path = NULL;
+@@ -1063,7 +1107,7 @@ int main(int argc, char **argv)
+ 
+   // Generate format if necessary
+   format_name = "xelatex.ini";
+-  if (!validate_format() && !bootstrap_format())
++  if (!prepare_format())
+   {
+     fprintf(stderr, "Failed to generate format.\n");
+     return 1;

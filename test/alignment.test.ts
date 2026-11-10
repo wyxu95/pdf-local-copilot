@@ -26,6 +26,6 @@ test('source alignment finds the same passage after it moves to another PDF page
     const location = await previews[1].locate(active, b.x + 2, b.y);
     await pendingCrop;
     assert.equal(await fs.realpath(location.file), await fs.realpath(path.join(temp, 'after/main.tex')));
-  } catch (error) { context.diagnostic(diagnostics.join('\n').slice(-16000)); throw error; }
+  } catch (error) { const log = diagnostics.join('\n'); context.diagnostic(log.slice(0, 12000) + '\n...\n' + log.slice(-4000)); throw error; }
   finally { await Promise.all(previews.map(p => p.stop())); await fs.rm(temp, { recursive: true, force: true }); }
 });

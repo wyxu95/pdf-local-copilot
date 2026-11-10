@@ -1,6 +1,6 @@
 # TeXpresso source integration
 
-The extension uses a pinned source checkout and four small patches, managed by
+The extension uses a pinned source checkout and five small patches, managed by
 [`scripts/build-native.mjs`](../scripts/build-native.mjs).
 
 ## Source identity
@@ -9,9 +9,9 @@ The extension uses a pinned source checkout and four small patches, managed by
 - Headless/VS Code base: <https://github.com/DominikPeters/texpresso/tree/vscode>
 - Pinned revision: `df8b0941ef19b36377014d18a9a264f3591280b1`
 - Local source directory: `vendor/texpresso/`
-- Local changes: [`scripts/texpresso-text-layer.patch`](../scripts/texpresso-text-layer.patch), [`scripts/texpresso-pdf-links.patch`](../scripts/texpresso-pdf-links.patch), [`scripts/texpresso-link-geometry.patch`](../scripts/texpresso-link-geometry.patch), and [`scripts/texpresso-unicode.patch`](../scripts/texpresso-unicode.patch)
+- Local changes: [`scripts/texpresso-text-layer.patch`](../scripts/texpresso-text-layer.patch), [`scripts/texpresso-pdf-links.patch`](../scripts/texpresso-pdf-links.patch), [`scripts/texpresso-link-geometry.patch`](../scripts/texpresso-link-geometry.patch), [`scripts/texpresso-unicode.patch`](../scripts/texpresso-unicode.patch), and [`scripts/texpresso-format-cache.patch`](../scripts/texpresso-format-cache.patch)
 
-The patches extend character extraction, link metadata, and XDV text decoding:
+The patches extend character extraction, link metadata, XDV text decoding, and shared format-cache startup:
 
 | Upstream file | Addition |
 | --- | --- |
@@ -20,10 +20,11 @@ The patches extend character extraction, link metadata, and XDV text decoding:
 | `src/frontend/preview.c` | Adds the character array to full-page preview responses |
 | `src/frontend/engine_pdf.c` | Exports bounded link rectangles, resolved internal targets, and named destination coordinates through MuPDF |
 | `src/dvi/dvi_prim.c` | Extracts tight link regions and decodes glyph names such as `t_t` and `f_f_i` as multi-letter Unicode sequences while drawing each glyph once |
+| `src/engine/main/main.c` | Serializes shared format generation with a process lock and atomically publishes the completed format and dependency files |
 
 The driver, headless protocol, incremental engine, and XeTeX modifications come
 from the pinned upstream source. This extension adds selection geometry and the
-VS Code integration. The XeTeX engine source itself is unchanged by our patches.
+VS Code integration. The engine startup patch coordinates the shared format cache.
 
 The DVI backend already provides internal links and named destinations at this
 pinned revision. The PDF-links patch supplies equivalent metadata for the PDF
@@ -40,6 +41,7 @@ git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-text-lay
 git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-pdf-links.patch
 git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-link-geometry.patch
 git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-unicode.patch
+git -C vendor/texpresso apply --reverse --check ../../scripts/texpresso-format-cache.patch
 native/texpresso -capabilities
 ```
 

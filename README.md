@@ -192,6 +192,7 @@ TeXpresso is maintained as a **pinned upstream revision plus tracked patches**. 
 | [scripts/texpresso-pdf-links.patch](scripts/texpresso-pdf-links.patch) | Exports internal links and named destinations from the PDF backend for reference previews |
 | [scripts/texpresso-link-geometry.patch](scripts/texpresso-link-geometry.patch) | Uses text-character quads for tight DVI link regions, separating adjacent citation numbers |
 | [scripts/texpresso-unicode.patch](scripts/texpresso-unicode.patch) | Decodes multi-letter XDV glyph names such as `t_t` and `f_f_i` into selectable Unicode text |
+| [scripts/texpresso-format-cache.patch](scripts/texpresso-format-cache.patch) | Coordinates concurrent cold starts and atomically publishes shared TeX format files |
 | `vendor/texpresso/` | Generated, ignored upstream source checkout |
 | `native/` | Generated binaries, copied TeXpresso license, and build provenance |
 | [src/live.ts](src/live.ts) | Starts and communicates with the headless renderer |
