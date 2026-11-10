@@ -21,10 +21,13 @@ try {
 servers.sort((a, b) => b.modified - a.modified);
 if (servers.length) targets.push(servers[0].cli);
 const expected = `${manifest.publisher}.${manifest.name}@${manifest.version}`;
+const environment = { ...process.env };
+// The desktop CLI otherwise redirects to the remote CLI inside an SSH terminal.
+delete environment.VSCODE_IPC_HOOK_CLI;
 for (const cli of targets) {
   await access(cli);
-  execFileSync(cli, ['--install-extension', archive, '--force'], { stdio: 'inherit' });
-  const installed = execFileSync(cli, ['--list-extensions', '--show-versions'], { encoding: 'utf8' });
+  execFileSync(cli, ['--install-extension', archive, '--force'], { stdio: 'inherit', env: environment });
+  const installed = execFileSync(cli, ['--list-extensions', '--show-versions'], { encoding: 'utf8', env: environment });
   if (!installed.split(/\r?\n/).includes(expected)) throw new Error(`Version verification failed for ${cli}`);
 }
 console.log(`Verified ${expected} in ${targets.length} extension stores. Reload the Mac and Remote SSH windows to activate it.`);
