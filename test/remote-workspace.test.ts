@@ -6,10 +6,10 @@ import path from 'node:path';
 import { BuildManager } from '../src/build';
 import { LivePreview } from '../src/live';
 
-test('workspace-host rendering handles paths containing spaces and Unicode', { timeout: 60000 }, async () => {
+test('workspace-host rendering handles Unicode paths, spaces and Windows line endings', { timeout: 60000 }, async () => {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-remote-')), root = path.join(await fs.realpath(temporary), 'paper with spaces 论文'), main = path.join(root, 'main.tex');
   await fs.mkdir(root);
-  await fs.writeFile(main, '\\documentclass{article}\n\\begin{document}\nRemote workspace text.\n\\end{document}\n');
+  await fs.writeFile(main, '\\documentclass{article}\r\n\\begin{document}\r\nRemote workspace text.\r\n\\end{document}\r\n');
   const build = new BuildManager(root, main, 'xelatex', () => {}); let preview: LivePreview | undefined;
   try {
     await build.build();

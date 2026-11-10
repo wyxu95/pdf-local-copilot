@@ -41,7 +41,7 @@ package for the **workspace host**, including its CPU architecture. Run
 
    ```sh
    sudo apt-get update
-   sudo apt-get install -y git latexmk texlive-xetex texlive-latex-extra \
+   sudo apt-get install -y git latexmk texlive-xetex texlive-latex-extra texlive-fonts-recommended \
      texlive-bibtex-extra biber mupdf-tools libsdl2-2.0-0 liblept5 libtesseract5
    ```
 
@@ -49,7 +49,7 @@ package for the **workspace host**, including its CPU architecture. Run
    fonts, these Ubuntu packages are useful:
 
    ```sh
-   sudo apt-get install -y texlive-publishers texlive-fonts-extra fonts-linuxlibertine
+   sudo apt-get install -y texlive-publishers texlive-fonts-extra texlive-fonts-extra-links fonts-linuxlibertine
    ```
 
 4. Install and authenticate your chosen Codex or Claude Code CLI **inside WSL**.

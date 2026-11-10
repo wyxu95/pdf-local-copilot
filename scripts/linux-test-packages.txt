@@ -2,6 +2,7 @@ latexmk
 texlive-xetex
 texlive-luatex
 texlive-latex-extra
+texlive-fonts-recommended
 texlive-bibtex-extra
 fonts-linuxlibertine
 biber
