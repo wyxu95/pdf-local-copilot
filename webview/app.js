@@ -757,7 +757,7 @@ import { referenceKind, referenceLinkAt, referenceLabel, referencePreviewBounds 
         clearTimeout(chatDraftTimer); chatInput.value = message.draft;
         document.querySelector('#chat-error').hidden = true; updateChatControls(); saveChatDraft();
       }
-      chatInput.focus(); chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+      requestAnimationFrame(() => { chatInput.focus(); chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length); });
     }
     else if (message.type === 'navigate') navigate(message.page);
     else if (message.type === 'sourcePosition') {

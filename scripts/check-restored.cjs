@@ -6,10 +6,20 @@ const assert = require('node:assert/strict');
 let browser, page;
 const until = async fn => { const deadline = Date.now() + 60000; while (Date.now() < deadline) { if (await fn()) return; await new Promise(resolve => setTimeout(resolve, 200)); } throw new Error('Timed out restoring windows'); };
 (async () => {
-  const root = process.cwd(), profile = path.join(root, 'output/host/profile');
+  const root = process.cwd(), profile = path.join(root, 'output/host/restore-profile-' + Date.now());
+  await fs.mkdir(path.join(profile, 'User'), { recursive: true });
+  await fs.copyFile(path.join(root, 'output/host/profile/User/settings.json'), path.join(profile, 'User/settings.json'));
   const metadata = path.join(root, 'output/host/paper/.pdf-local-copilot/conversations');
-  const conversationFile = path.join(metadata, (await fs.readdir(metadata)).find(name => name.endsWith('.json')));
-  const session = JSON.parse(await fs.readFile(conversationFile, 'utf8')).id;
+  const conversationFile = path.join(metadata, (await fs.readdir(metadata)).find(name => /^[a-f0-9]{12}\.json$/.test(name)));
+  const conversation = JSON.parse(await fs.readFile(conversationFile, 'utf8')), session = conversation.id;
+  const project = path.join(root, 'output/host/paper'), tasks = path.join(project, '.pdf-local-copilot/tasks');
+  const task = JSON.parse(await fs.readFile(path.join(tasks, (await fs.readdir(tasks)).sort().at(-1), 'task.json'), 'utf8'));
+  const main = path.join(project, 'main.tex'), before = await fs.readFile(main, 'utf8');
+  const after = before.replace('improves the efficiency', 'improves the clarity'); assert.notEqual(after, before);
+  await fs.writeFile(main, after);
+  task.ended = false; task.startCommit = require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { cwd: project, encoding: 'utf8' }).trim(); task.reviewCommit = task.startCommit;
+  await fs.writeFile(path.join(task.dir, 'task.json'), JSON.stringify(task));
+  conversation.task = task; await fs.writeFile(conversationFile, JSON.stringify(conversation));
   const noteRoot = path.dirname(metadata), noteFile = path.join(noteRoot, (await fs.readdir(noteRoot)).find(name => name.endsWith('.json')));
   const saved = JSON.parse(await fs.readFile(noteFile, 'utf8'));
   saved.notes = saved.notes.filter(note => !['reload-macro', 'reload-removed'].includes(note.id));
@@ -30,6 +40,9 @@ const until = async fn => { const deadline = Date.now() + 60000; while (Date.now
     assert.equal(JSON.parse(await fs.readFile(conversationFile, 'utf8')).id, session);
     assert.equal(await page.getByRole('tab', { name: /^Paper · main\.tex/ }).count(), 1);
     assert.equal(await page.getByRole('tab', { name: /Paper Chat.*main\.tex/ }).count(), 1);
+    const paperView = page.getByRole('tab', { name: /^Paper(?:$| -)/ });
+    if (await paperView.getAttribute('aria-selected') !== 'true') await paperView.click();
+    await until(async () => await page.getByRole('treeitem').filter({ hasText: 'clarity' }).count() > 0);
     await until(async () => {
       const notes = JSON.parse(await fs.readFile(noteFile, 'utf8')).notes;
       return notes.find(note => note.id === 'reload-macro').rects[0][1] > 100 && notes.find(note => note.id === 'reload-removed').anchorStatus === 'orphaned';
@@ -49,7 +62,7 @@ const until = async fn => { const deadline = Date.now() + 60000; while (Date.now
   await until(async () => { page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().includes('workbench')); return !!page; });
   await check();
   await page.screenshot({ path: 'output/playwright/vscode-restored-panels.png' });
-  console.log('PASS: normal VS Code restart and window reload restore PDF and chat once, preserving the session, agent and model.');
+  console.log('PASS: a fresh workspace restores pending review from the project; normal restart and reload preserve PDF, chat, session, agent and model.');
 })().catch(async error => { console.error(error); if (page) { console.error((await page.locator('body').innerText().catch(() => '')).slice(-4000)); await page.screenshot({ path: 'output/playwright/restore-failure.png' }).catch(() => {}); } process.exitCode = 1; }).finally(async () => {
   if (browser) { await Promise.race([(await browser.newBrowserCDPSession()).send('Browser.close').catch(() => {}), new Promise(resolve => setTimeout(resolve, 1000))]); await browser.close().catch(() => {}); }
 });

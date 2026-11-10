@@ -9,6 +9,7 @@ export interface Edit {
   id: string; file: string; start: number; end: number; inserted: string; removed: string;
   beforeLine: number; afterLine: number; decision: Decision;
   noteIds?: string[]; requestId?: string; origin?: 'annotation' | 'session' | 'editor';
+  parentId?: string;
 }
 export interface ReviewRequest { id: string; instruction: string; notes: Note[]; anchors: { noteId: string; file: string; line: number; endLine: number }[] }
 export interface ReviewFile { file: string; before?: string; proposed?: string; binary: boolean; edits: Edit[] }
@@ -56,6 +57,7 @@ export function associateReview(review: Review, previous?: Review, request?: Rev
   review.requests = [...(previous?.requests || [])];
   if (request && !review.requests.some(item => item.id === request.id)) review.requests.push(request);
   const old = new Map(previous?.files.flatMap(file => file.edits.map(edit => [edit.id, edit] as const)) || []);
+  for (const file of previous?.files || []) for (const edit of file.edits) if (edit.parentId && !old.has(edit.parentId)) old.set(edit.parentId, edit);
   for (const file of review.files) for (const edit of file.edits) {
     const existing = old.get(edit.id);
     if (existing?.origin && existing.decision !== 'rejected') { edit.noteIds = existing.noteIds; edit.requestId = existing.requestId; edit.origin = existing.origin; continue; }
@@ -79,9 +81,11 @@ export function resolvedNoteIds(review: Review) {
 }
 
 export function materialize(file: ReviewFile, include: (edit: Edit) => boolean): Buffer | undefined {
-  if (file.binary || file.before === undefined || file.proposed === undefined) return include(file.edits[0]) ? textBuffer(file.proposed) : textBuffer(file.before);
-  const original = textBuffer(file.before)!.toString('utf8'); let result = '', cursor = 0;
-  for (const edit of file.edits) { result += original.slice(cursor, edit.start) + (include(edit) ? edit.inserted : edit.removed); cursor = edit.end; }
+  if (file.binary) return include(file.edits[0]) ? textBuffer(file.proposed) : textBuffer(file.before);
+  const included = file.edits.map(include);
+  if (file.before === undefined && !included.some(Boolean) || file.proposed === undefined && included.every(Boolean)) return undefined;
+  const original = textBuffer(file.before)?.toString('utf8') || ''; let result = '', cursor = 0;
+  file.edits.forEach((edit, index) => { result += original.slice(cursor, edit.start) + (included[index] ? edit.inserted : edit.removed); cursor = edit.end; });
   return Buffer.from(result + original.slice(cursor));
 }
 export function reviewPlan(review: Review, acceptedOnly: boolean): Change[] {
@@ -93,7 +97,7 @@ export function reviewPlan(review: Review, acceptedOnly: boolean): Change[] {
 }
 export function editPosition(file: ReviewFile, target: Edit) {
   let offset = target.start;
-  for (const edit of file.edits) if (edit.start < target.start && edit.decision !== 'rejected') offset += edit.inserted.length - edit.removed.length;
+  for (const edit of file.edits) { if (edit.id === target.id) break; if (edit.decision !== 'rejected') offset += edit.inserted.length - edit.removed.length; }
   const current = materialize(file, e => e.decision !== 'rejected')?.toString('utf8') || '';
   return { line: lineAt(current, offset), endLine: lineAt(current, offset + (target.decision === 'rejected' ? target.removed.length : target.inserted.length)), offset };
 }
@@ -112,7 +116,7 @@ export async function loadReview(task: Task): Promise<Review | undefined> {
     for (const entry of saved.files) {
       const before = entry.beforeExists ? (await fs.readFile(path.join(task.baseline, entry.file))).toString('base64') : undefined;
       const file: ReviewFile = { file: entry.file, binary: entry.binary, edits: entry.edits, before, proposed: entry.proposedExists ? entry.proposed || '' : undefined };
-      if (!file.binary && entry.proposedExists) file.proposed = (before === undefined ? Buffer.from(file.edits[0].inserted) : materialize(file, () => true)!).toString('base64');
+      if (!file.binary && entry.proposedExists) file.proposed = materialize(file, () => true)!.toString('base64');
       files.push(file);
     }
     return { version: 1, files, requests: saved.requests };

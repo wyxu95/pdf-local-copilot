@@ -22,7 +22,7 @@ export async function ignoredFiles(root: string, files: string[]): Promise<Set<s
   });
 }
 export interface Change { file: string; kind: 'modified' | 'added' | 'deleted'; before?: Buffer; after?: Buffer }
-export interface Task { id: string; dir: string; baseline: string; proposal: string; root: string; main: string; round?: number; sessions?: Partial<Record<string, string>>; mode?: 'workspace'; originalHashes?: Record<string, string>; externalChanges?: string[] }
+export interface Task { id: string; dir: string; baseline: string; proposal: string; root: string; main: string; round?: number; sessions?: Partial<Record<string, string>>; mode?: 'workspace'; originalHashes?: Record<string, string>; externalChanges?: string[]; startCommit?: string | null; reviewCommit?: string; ended?: boolean }
 
 export async function scan(root: string, main: string, respectGitIgnore = true) {
   const files = new Map<string, Buffer>();

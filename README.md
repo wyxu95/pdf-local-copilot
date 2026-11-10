@@ -43,6 +43,11 @@ Click a change in **Current Changes** (Current changes) to open its source diff.
 
 Each turn compares against the working draft immediately before that turn. Accepting a change confirms the current edit; rejecting it restores that part of the source. Accepted entries and their PDF decorations leave the pending list.
 
+Git commits also confirm the changes they contain. Committed edits automatically
+leave **Current Changes** and their PDF decorations are cleared. Partial staging
+confirms only the committed portion; other edits and files remain pending. These
+confirmations preserve the working files and the original annotation links.
+
 ### 3. Browse the versions you approved
 
 ![Local approval checkpoints and a read-only historical diff beside the current PDF](docs/images/history.png)

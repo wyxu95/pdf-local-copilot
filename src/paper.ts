@@ -21,6 +21,7 @@ import { alignReviewSource } from './review-geometry';
 import { LocalHistory, type HistoryPoint } from './local-history';
 import { historyUri } from './history-files';
 import { displayHistoryLabel } from './history-label';
+import { gitHead, committedReviewFiles, acceptCommittedReview } from './commit-review';
 
 interface UI {
   output: vscode.OutputChannel; diagnostics: vscode.DiagnosticCollection;
@@ -53,6 +54,8 @@ export class Paper {
   private pendingChatFocus?: { draft?: string };
   private openingChat?: Promise<void>;
   private referenceGeneration = 0;
+  private markerTimer?: NodeJS.Timeout; private markerGeneration = 0;
+  private markerVersions = new Map<string, string>();
   localHistory?: LocalHistory;
   private conversation: ConversationStore;
   private catalogs: Record<string, ModelCatalog> = {};
@@ -90,7 +93,7 @@ export class Paper {
     panel.title = `${chatOnly ? 'Paper Chat' : side === 'before' ? 'Paper' : 'Working Draft'} · ${path.basename(this.main)}`;
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     panel.iconPath = new vscode.ThemeIcon(chatOnly ? 'comment-discussion' : side === 'before' ? 'book' : 'git-compare');
-    this.resources.push(panel.onDidChangeViewState(e => { if (e.webviewPanel.active) { this.currentSide = panelSide(); this.ui.activate(this); if (!chatOnly) this.post(panel, { type: 'reportVisiblePage' }); } else if (!chatOnly) this.post(panel, { type: 'dismissReview' }); }));
+    this.resources.push(panel.onDidChangeViewState(e => { if (e.webviewPanel.active) { this.currentSide = panelSide(); this.ui.activate(this); if (chatOnly) this.flushChatActions(); else this.post(panel, { type: 'reportVisiblePage' }); } else if (!chatOnly) this.post(panel, { type: 'dismissReview' }); }));
     this.resources.push(panel.webview.onDidReceiveMessage(m => {
       const side = panelSide();
       if (m.type === 'pageRelative') { this.currentSide = side; this.ui.activate(this); void this.showPage(this.page + (m.delta > 0 ? 1 : -1)).catch(this.ui.report); return; }
@@ -246,12 +249,13 @@ export class Paper {
       for (const [file, text] of Object.entries(saved.proposalSources || {})) if (typeof text === 'string') this.proposalVersions.set(file, text);
     }
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+    const projectConversation = await fs.access(this.conversation.file).then(() => true, () => false);
     await this.conversation.load();
     this.selectedEdits = new Set(this.conversation.value.selectedEdits || []);
     await this.loadModels();
     if (!this.agentProfiles().some(profile => profile.id === this.conversation.value.agent)) this.conversation.value.agent = this.agentProfiles()[0].id;
     this.selectedNotes = new Set(this.conversation.value.selectedNotes.filter(id => this.notes.some(n => n.id === id)));
-    const saved = this.context.workspaceState.get<Task>(this.key);
+    const saved = projectConversation ? undefined : this.context.workspaceState.get<Task>(this.key);
     if (saved) { try { this.task = JSON.parse(await fs.readFile(path.join(saved.dir, 'task.json'), 'utf8')); await fs.access(this.task!.proposal); } catch { this.task = undefined; await this.context.workspaceState.update(this.key, undefined); } }
     if (this.task && !this.conversation.value.task) this.conversation.value.task = this.task;
     const previous = this.conversation.value.task;
@@ -291,7 +295,7 @@ export class Paper {
     if (!restoring) this.showChat(true); await this.saveConversation();
   }
   private async adoptWorkspaceTask() {
-    const previous = this.task || this.conversation.value.task;
+    const previous = this.conversation.value.task || this.task;
     if (previous && previous.mode !== 'workspace') {
       const review = await loadReview(previous) || makeReview(await changes(previous));
       const additional = (await changes(previous)).filter(change => {
@@ -329,7 +333,18 @@ export class Paper {
       }
       const retained = vscode.window.tabGroups.all.some(group => group.tabs.some(tab => inputs(tab).some(uri => uri.scheme === 'file' && inside(previous.dir, uri.fsPath)))) || opened.some(doc => doc.isDirty);
       if (!retained && path.dirname(previous.dir) === path.join(this.context.globalStorageUri.fsPath, 'tasks') && path.basename(previous.dir) === previous.id) await fs.rm(previous.dir, { recursive: true, force: true });
-    } else if (this.task) this.workingTree = await WorkingTree.open(this.task);
+    } else if (previous) {
+      const messages = this.conversation.value.messages;
+      const lastEnd = messages.map(message => message.role === 'system' && message.text.startsWith('Review complete;')).lastIndexOf(true);
+      const lastTurn = messages.map(message => message.role === 'user' || message.role === 'assistant').lastIndexOf(true);
+      const ended = previous.ended ?? (lastEnd > lastTurn);
+      if (!ended) { this.task = previous; this.workingTree = await WorkingTree.open(previous); }
+      else { this.task = undefined; this.workingTree = undefined; await this.context.workspaceState.update(this.key, undefined); }
+    }
+    if (this.task?.mode === 'workspace' && this.task.startCommit === undefined) {
+      this.task.startCommit = await gitHead(this.root) || null; this.task.reviewCommit = this.task.startCommit || undefined;
+      await fs.writeFile(path.join(this.task.dir, 'task.json'), JSON.stringify(this.task, null, 2));
+    }
     if (this.lastApplication && !inside(path.join(this.root, '.pdf-local-copilot'), this.lastApplication)) {
       const local = path.join(this.root, '.pdf-local-copilot', 'applications', path.basename(this.lastApplication));
       await fs.mkdir(path.dirname(local), { recursive: true }); await fs.copyFile(this.lastApplication, local); this.lastApplication = local;
@@ -353,12 +368,13 @@ export class Paper {
   private createPreview(side: 'before' | 'after', root: string, main: string, build: BuildManager, pdf?: string) {
     const session = ++this.previewSessions[side]; this.both({ type: 'previewReset', side, session });
     return new LivePreview(this.binary(), root, main, {
-      frame: frame => this.both({ type: 'frame', side, session, header: frame.header, data: frame.bytes.toString('base64') }),
+      frame: frame => { this.both({ type: 'frame', side, session, header: frame.header, data: frame.bytes.toString('base64') }); this.scheduleMarkers(side, session, frame.header.sequence, frame.header.revision); },
       state: value => {
         const previous = this.totals[side]; this.both({ type: 'previewState', side, session, ...value });
         this.totals[side] = { pages: value.pages, complete: value.complete }; this.pageCount = this.task ? Math.max(this.totals.before.pages, this.totals.after.pages) : value.pages;
         this.complete = this.totals.before.complete && (!this.task || this.task.mode === 'workspace' || this.totals.after.complete); this.ui.refresh();
         if (side === 'before' && value.complete && (!previous.complete || previous.pages !== value.pages)) this.scheduleAnchors();
+        this.scheduleMarkers(side, session, value.sequence, value.revision);
       },
       log: text => this.log(`[${side}] ${text}`), error: e => { this.log(e.message + '\n'); this.both({ type: 'error', message: e.message }); }
     }, { includeDirectories: [build.directory], pdf });
@@ -422,10 +438,11 @@ export class Paper {
     const watched = new Set<Repository>();
     const attach = (repository: Repository) => {
       if (!inside(repository.rootUri.fsPath, this.root) || watched.has(repository)) return;
-      watched.add(repository); this.resources.push(repository.state.onDidChange(() => {
+      watched.add(repository); const changed = () => {
         const head = repository.state.HEAD?.commit;
-        if (head !== this.localHistory?.head) void this.refreshHistory().catch(this.ui.report);
-      }));
+        if (head !== this.localHistory?.head || this.task && head !== this.task.reviewCommit) void this.refreshHistory().then(() => this.syncCommittedReview()).catch(this.ui.report);
+      };
+      this.resources.push(repository.state.onDidChange(changed)); changed();
     };
     for (const repository of api.repositories) attach(repository);
     this.resources.push(api.onDidOpenRepository(attach));
@@ -440,6 +457,24 @@ export class Paper {
     });
     if (tabs.length) await vscode.window.tabGroups.close(tabs, true);
     this.ui.refresh();
+  }
+  private syncCommittedReview(force = false): Promise<void> {
+    const next = this.decisions.catch(() => {}).then(async () => {
+      const task = this.task, review = this.review;
+      if (this.disposed || this.busy || task?.mode !== 'workspace' || task.ended || !review) return;
+      const head = await gitHead(this.root); if (!head || !force && head === task.reviewCommit) return;
+      if (head !== this.localHistory?.head) await this.refreshHistory();
+      const committed = await committedReviewFiles(this.root, task.startCommit || undefined, head, review.files.map(file => file.file));
+      const result = acceptCommittedReview(review, committed);
+      if (this.disposed || this.busy || this.task !== task || this.review !== review) return;
+      if (result.accepted) { await saveReview(task, result.review); this.review = result.review; }
+      task.reviewCommit = head; await fs.writeFile(path.join(task.dir, 'task.json'), JSON.stringify(task, null, 2));
+      if (result.accepted) {
+        await this.publishReviewDecisions([...committed.keys()]); await this.paintMarkers();
+        this.log(`Accepted ${result.accepted} committed changes from ${head.slice(0, 7)}.\n`);
+      } else await this.conversation.save();
+    });
+    this.decisions = next; return next;
   }
   async showLocalHistory(point: HistoryPoint, file: string) {
     const history = this.localHistory; if (!history?.head) return;
@@ -562,7 +597,7 @@ export class Paper {
     this.pendingNoteSend = ids; void this.showChatForAction().then(() => this.flushChatActions()).catch(this.ui.report);
   }
   private flushChatActions() {
-    if (!this.chatReady) return;
+    if (!this.chatReady || !this.chatPanel?.active) return;
     if (this.pendingChatFocus) { this.post(this.chatPanel, { type: 'focusChat', ...this.pendingChatFocus }); this.pendingChatFocus = undefined; }
     if (this.pendingNoteSend) { this.post(this.chatPanel, { type: 'sendSelectedNotes', ids: this.pendingNoteSend }); this.pendingNoteSend = undefined; }
   }
@@ -688,7 +723,7 @@ export class Paper {
         clearTimeout(outputTimer);
         conversation.activeTurn = undefined; await this.saveConversation();
       }
-    } finally { this.processingQueue = false; this.ui.refresh(); await this.saveConversation(); }
+    } finally { this.processingQueue = false; await this.syncCommittedReview(); this.ui.refresh(); await this.saveConversation(); }
   }
   private newSessionBlock() {
     if (this.queueActive) return 'The agent is still running. Wait for completion or stop it before starting a new session.';
@@ -749,6 +784,8 @@ export class Paper {
           progress.report({ message: 'Recording the working draft…' });
           this.workingTree = await WorkingTree.create(this.root, this.main, this.conversation.value.task?.sessions);
           this.task = this.workingTree.task; this.conversation.value.task = this.task;
+          this.task.startCommit = await gitHead(this.root) || null; this.task.reviewCommit = this.task.startCommit || undefined; this.task.ended = false;
+          await fs.writeFile(path.join(this.task.dir, 'task.json'), JSON.stringify(this.task, null, 2));
           await this.saveConversation(); await this.context.workspaceState.update(this.key, this.task);
         }
         await this.workingTree?.capture();
@@ -822,6 +859,7 @@ export class Paper {
       } catch (e) { this.log(String(e)); }
       if (this.notes.some(n => n.proposalTask)) await this.saveNotes();
     }
+    await this.syncCommittedReview(true);
   }
   private async hideProcessedNotes(requests: ReviewRequest[]) {
     let changed = false;
@@ -832,7 +870,8 @@ export class Paper {
     if (changed) await this.saveNotes();
   }
   private async paintMarkers() {
-    if (!this.review || !this.task || !this.before || this.task.mode !== 'workspace' && !this.after || this.busy) return;
+    if (this.disposed || !this.review || !this.task || !this.before || this.task.mode !== 'workspace' && !this.after || this.busy) return;
+    const generation = ++this.markerGeneration;
     const review = this.review, task = this.task, markers: { before: Marker[]; after: Marker[] } = { before: [], after: [] };
     for (const side of (task.mode === 'workspace' ? ['before'] : ['before', 'after']) as ('before' | 'after')[]) {
       const preview = side === 'before' ? this.before : this.after; if (!preview) continue;
@@ -840,12 +879,12 @@ export class Paper {
       if (!files.length) continue;
       const deadline = Date.now() + 20000;
       while (!preview.snapshot().complete && Date.now() < deadline) {
-        if (this.disposed || this.review !== review || this.task !== task) return;
+        if (this.disposed || this.review !== review || this.task !== task || generation !== this.markerGeneration) return;
         await new Promise(resolve => setTimeout(resolve, 30));
       }
       const headers: FrameHeader[] = [];
       for (let page = 0; page < preview.snapshot().pages; page++) {
-        if (this.disposed || this.review !== review || this.task !== task) return;
+        if (this.disposed || this.review !== review || this.task !== task || generation !== this.markerGeneration) return;
         try { headers.push((await preview.readPage(page)).header); } catch (e) { this.log(`Reading changed pages: ${String(e)}\n`); }
       }
       for (const file of files) {
@@ -863,8 +902,15 @@ export class Paper {
         }
       }
     }
-    if (this.disposed || this.review !== review || this.task !== task) return;
+    if (this.disposed || this.review !== review || this.task !== task || generation !== this.markerGeneration) return;
     this.markers = markers; this.both({ type: 'markers', markers }); this.ui.refresh();
+  }
+  private scheduleMarkers(side: 'before' | 'after', session: number, sequence: number, revision: number) {
+    if (this.disposed || this.busy || !this.totals[side].complete || !this.review?.files.some(file => file.file.endsWith('.tex') && file.edits.some(edit => edit.decision !== 'accepted'))) return;
+    const version = `${session}:${sequence}:${revision}`;
+    if (this.markerVersions.get(side) === version) return;
+    this.markerVersions.set(side, version); clearTimeout(this.markerTimer);
+    this.markerTimer = setTimeout(() => { void this.paintMarkers().catch(error => this.log(String(error))); }, 100);
   }
   setDecision(id: string, decision: Decision, wholeFile = false, recordHistory = true): Promise<void> {
     const next = this.decisions.catch(() => {}).then(() => this.changeDecision(id, decision, wholeFile, recordHistory)); this.decisions = next; return next;
@@ -877,22 +923,28 @@ export class Paper {
     if (dirty) throw new Error(`Save the current edits in ${path.basename(dirty.fileName)} before refreshing the review.`);
     const textChanges = edits.some(e => (e.decision === 'rejected') !== (decision === 'rejected'));
     for (const edit of edits) await decide(this.task, this.review, edit.id, decision);
-    if (decision === 'accepted') for (const edit of edits) this.selectedEdits.delete(edit.id);
+    await this.publishReviewDecisions(edits.map(edit => edit.file));
+    if (decision === 'accepted' && recordHistory) await this.recordAcceptance(edits.map(edit => edit.id), `Accepted Change · ${edits[0].file}`);
+    if (textChanges) { this.after?.rescan(); try { await this.rebuild(this.task?.mode === 'workspace' ? 'before' : 'after', false); } catch (e) { this.log(String(e)); } await this.paintMarkers(); }
+  }
+  private async publishReviewDecisions(files: string[]) {
+    if (!this.task || !this.review) return;
+    const edits = this.review.files.flatMap(file => file.edits), visible = new Set(edits.filter(edit => edit.decision !== 'accepted').map(edit => edit.id));
+    this.selectedEdits = new Set([...this.selectedEdits].filter(id => visible.has(id)));
     this.conversation.value.selectedEdits = [...this.selectedEdits]; await this.conversation.save();
-    for (const file of this.review.files.filter(file => edits.some(edit => edit.file === file.file))) if (!file.binary) this.ui.reviewBase.set(this.task.id, file.file, materialize(file, edit => edit.decision === 'accepted')?.toString('utf8') || '', this.root);
-    if (edits.some(edit => edit.id === this.selectedEdit && decision === 'accepted')) { this.selectedEdit = undefined; this.both({ type: 'selectedEdit', id: null }); }
-    const resolved = resolvedNoteIds(this.review), linked = new Set(this.review.files.flatMap(file => file.edits.flatMap(edit => edit.noteIds || [])));
-    const accepted = new Set(this.review.files.flatMap(file => file.edits.filter(edit => edit.decision === 'accepted').flatMap(edit => edit.noteIds || [])));
+    for (const file of this.review.files.filter(file => files.includes(file.file))) if (!file.binary) this.ui.reviewBase.set(this.task.id, file.file, materialize(file, edit => edit.decision === 'accepted')?.toString('utf8') || '', this.root);
+    if (this.selectedEdit && !visible.has(this.selectedEdit)) { this.selectedEdit = undefined; this.both({ type: 'selectedEdit', id: null }); }
+    const resolved = resolvedNoteIds(this.review), linked = new Set(edits.flatMap(edit => edit.noteIds || []));
+    const accepted = new Set(edits.filter(edit => edit.decision === 'accepted').flatMap(edit => edit.noteIds || []));
     let updated = false;
     for (const note of this.notes) if (linked.has(note.id)) {
       const status = resolved.has(note.id) ? 'resolved' : accepted.has(note.id) || note.status === 'reviewing' || note.status === 'resolved' ? 'reviewing' : 'open';
       if (note.status !== status) { note.status = status; updated = true; if (status !== 'open') this.selectedNotes.delete(note.id); }
     }
     if (updated) { this.threads.forEach(thread => thread.dispose()); this.threads = []; await this.saveNotes(); this.conversation.value.selectedNotes = [...this.selectedNotes]; await this.saveConversation(); }
-    this.ui.refresh(); this.both({ type: 'decisions', edits: this.review.files.flatMap(f => f.edits).map(e => ({ id: e.id, decision: e.decision })) });
-    for (const side of ['before', 'after'] as const) for (const marker of this.markers[side]) if (edits.some(e => e.id === marker.id)) marker.decision = decision;
-    if (decision === 'accepted' && recordHistory) await this.recordAcceptance(edits.map(edit => edit.id), `Accepted Change · ${edits[0].file}`);
-    if (textChanges) { this.after?.rescan(); try { await this.rebuild(this.task?.mode === 'workspace' ? 'before' : 'after', false); } catch (e) { this.log(String(e)); } await this.paintMarkers(); }
+    const decisions = new Map(edits.map(edit => [edit.id, edit.decision]));
+    for (const side of ['before', 'after'] as const) this.markers[side] = this.markers[side].filter(marker => decisions.has(marker.id)).map(marker => ({ ...marker, decision: decisions.get(marker.id)! }));
+    this.ui.refresh(); this.both({ type: 'decisions', edits: edits.map(edit => ({ id: edit.id, decision: edit.decision })) }); this.both({ type: 'markers', markers: this.markers });
   }
   async showEdit(id: string) {
     const file = this.review?.files.find(f => f.edits.some(e => e.id === id)), edit = file?.edits.find(e => e.id === id);
@@ -1050,6 +1102,7 @@ export class Paper {
         await vscode.window.showTextDocument(vscode.Uri.file(this.main), { viewColumn: group.viewColumn, preview: false, preserveFocus: true });
         await vscode.window.tabGroups.close(tabs, true);
       }
+      this.task.ended = true; await fs.writeFile(path.join(this.task.dir, 'task.json'), JSON.stringify(this.task, null, 2));
       this.task = undefined; this.workingTree = undefined; this.review = undefined; this.selectedEdit = undefined; this.alignedPage = undefined;
       this.selectedEdits.clear(); this.conversation.value.selectedEdits = [];
       await this.context.workspaceState.update(this.key, undefined);
@@ -1067,7 +1120,7 @@ export class Paper {
     await this.reconcileOriginalNotes(); for (const note of this.notes) delete note.proposalTask; this.proposalVersions.clear(); if (this.notes.length) await this.saveNotes(); await this.startSide('before', this.root, path.relative(this.root, this.main)); await this.refreshAnchors(); this.ui.refresh();
   }
   async dispose(closePanels = true) {
-    if (this.disposed) return; this.disposed = true; clearTimeout(this.anchorTimer); this.buildTimers.forEach(clearTimeout); this.proposalWatcher?.dispose();
+    if (this.disposed) return; this.disposed = true; clearTimeout(this.anchorTimer); clearTimeout(this.markerTimer); this.buildTimers.forEach(clearTimeout); this.proposalWatcher?.dispose();
     if (closePanels) { this.proposalPanel?.dispose(); this.chatPanel?.dispose(); }
     this.threads.forEach(t => t.dispose()); this.resources.forEach(r => r.dispose());
     if (this.queueActive || this.conversation.value.queue.length) this.conversation.value.paused = true;

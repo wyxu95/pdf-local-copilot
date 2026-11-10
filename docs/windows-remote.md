@@ -96,6 +96,11 @@ The same rule applies to `claude_config_dir`. For a WSL `uclaude` profile,
 user's home. Authenticate that profile on the same host. Agent sessions and
 credentials belong to their configured host and profile.
 
+Active review state is loaded from the project's `.pdf-local-copilot/` directory
+when opening it from another VS Code client. Run one agent queue for a project at
+a time. Git commits confirm only the edits included in the commit, so partial
+staging leaves the remaining review work available.
+
 ## Verification
 
 **Check Setup** reports the backend operating system, architecture, connection,

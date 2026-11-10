@@ -43,6 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
       { name: 'latexmk', command: 'latexmk', args: ['-v'] },
       { name: 'SyncTeX', command: 'synctex', args: ['--version'] },
       { name: 'TeX Live', command: 'kpsewhich', args: ['--version'] },
+      { name: 'Git', command: 'git', args: ['--version'] },
       { name: 'Codex', command: configuration.get<string>('codexPath') || 'codex', args: ['--version'] },
       { name: 'Claude', command: configuration.get<string>('claudePath') || 'claude', args: ['--version'] }
     ]);
