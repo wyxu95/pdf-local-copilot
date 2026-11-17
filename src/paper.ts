@@ -55,6 +55,7 @@ export class Paper {
   private sourceGroup?: vscode.TabGroup;
   private pendingChatFocus?: { draft?: string };
   private openingChat?: Promise<void>;
+  private startingSession?: Promise<void>;
   private referenceGeneration = 0;
   private markerTimer?: NodeJS.Timeout; private markerGeneration = 0;
   private markerVersions = new Map<string, string>();
@@ -747,12 +748,15 @@ export class Paper {
     if (this.task && (!this.review || this.review.files.some(file => file.edits.some(edit => edit.decision === 'pending')))) return 'There are changes pending review. Accept, reject, or end the review before starting a new session.';
     return '';
   }
-  async newSession() {
-    const reason = this.newSessionBlock(); if (reason) throw new Error(reason);
-    if (this.task) await this.finishTask();
-    const options = this.conversation.value.runOptions;
-    await this.conversation.reset(this.conversation.value.agent); this.conversation.value.runOptions = options; this.selectedNotes.clear(); await this.saveConversation(); this.ui.refresh();
-    if (!this.agentProfiles().some(profile => profile.id === this.conversation.value.agent)) { this.conversation.value.agent = this.agentProfiles()[0].id; await this.saveConversation(); }
+  newSession(): Promise<void> {
+    if (this.startingSession) return this.startingSession;
+    return this.startingSession = (async () => {
+      const reason = this.newSessionBlock(); if (reason) throw new Error(reason);
+      if (this.task) await this.finishTask();
+      const options = this.conversation.value.runOptions;
+      await this.conversation.reset(this.conversation.value.agent); this.conversation.value.runOptions = options; this.selectedNotes.clear(); await this.saveConversation(); this.ui.refresh();
+      if (!this.agentProfiles().some(profile => profile.id === this.conversation.value.agent)) { this.conversation.value.agent = this.agentProfiles()[0].id; await this.saveConversation(); }
+    })().finally(() => { this.startingSession = undefined; });
   }
   async revise(specific?: Note[], extra = '') {
     for (const note of specific || []) this.selectedNotes.add(note.id);

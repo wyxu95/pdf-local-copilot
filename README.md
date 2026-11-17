@@ -143,7 +143,7 @@ used by each window.
 
 Use the agent selector below the conversation, then choose a model and reasoning effort. **Other model** accepts a CLI-supported model name. Codex suggestions come from its local model cache; Claude suggestions include aliases and models from the selected profile. The CLI remains responsible for model availability and authentication.
 
-A named Claude agent can use its own configuration directory. For example, create `uclaude` with `~/.claude-uni` through **＋ Add Claude Agent…**, or configure:
+The default Claude Code agent inherits the extension host's environment and lets the CLI locate its configuration: `~/.claude.json` when `CLAUDE_CONFIG_DIR` is unset, or `$CLAUDE_CONFIG_DIR/.claude.json` when it is set. Named agents inherit the same environment unless they have an explicit `claude_config_dir`. For example, create `uclaude` with `~/.claude-uni` through **＋ Add Claude Agent…**, or configure:
 
 ```json
 {

@@ -7,6 +7,7 @@ import { createTask } from '../src/project';
 import { runAgent, agentArguments } from '../src/agent';
 import { launch, terminate } from '../src/process';
 import { once } from 'node:events';
+import { configuredAgents } from '../src/agents';
 
 test('agent receives literal stdin in the task directory and can be stopped', { timeout: 10000 }, async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-agent-'));
@@ -42,9 +43,11 @@ test('uclaude uses claude-uni and resumes its own session independently of defau
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-uclaude-')), root = path.join(temp, 'paper'); await fs.mkdir(root); await fs.writeFile(path.join(root, 'main.tex'), 'Original');
   const task = await createTask(root, path.join(root, 'main.tex'), path.join(temp, 'storage')), binary = path.join(temp, 'claude');
   const primary = '11111111-1111-4111-8111-111111111111', uni = '22222222-2222-4222-8222-222222222222';
-  await fs.writeFile(binary, `#!/usr/bin/env node\nconst fs=require('fs'),p=require('path');let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',()=>{const config=process.env.CLAUDE_CONFIG_DIR;fs.writeFileSync(p.basename(config)+'.json',JSON.stringify({config,args:process.argv.slice(2),input}));const id=config.endsWith('.claude-uni')?'${uni}':'${primary}';console.log(JSON.stringify({type:'system',subtype:'init',session_id:id}));console.log(JSON.stringify({type:'result',session_id:id,result:'OK'}));});\n`, { mode: 0o755 });
+  await fs.writeFile(binary, `#!/usr/bin/env node\nconst fs=require('fs'),p=require('path');let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',()=>{const config=process.env.CLAUDE_CONFIG_DIR,directory=config||p.join(require('os').homedir(),'.claude');fs.writeFileSync(p.basename(directory)+'.json',JSON.stringify({config,args:process.argv.slice(2),input}));const id=directory.endsWith('.claude-uni')?'${uni}':'${primary}';console.log(JSON.stringify({type:'system',subtype:'init',session_id:id}));console.log(JSON.stringify({type:'result',session_id:id,result:'OK'}));});\n`, { mode: 0o755 });
+  const inherited = process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.CLAUDE_CONFIG_DIR;
   try {
-    await runAgent('claude', binary, task, [], 'Default profile', () => {}).done;
+    await runAgent('claude', binary, task, [], 'Default profile', () => {}, [], undefined, configuredAgents()[1]).done;
     const profile = { id: 'custom:uclaude', name: 'uclaude', type: 'claude' as const, command: binary, claude_config_dir: '~/.claude-uni' };
     await runAgent(profile.id, binary, task, [], 'Uni profile', () => {}, [], undefined, profile).done;
     await runAgent(profile.id, binary, task, [], 'Continue uni', () => {}, [], undefined, profile).done;
@@ -54,6 +57,19 @@ test('uclaude uses claude-uni and resumes its own session independently of defau
     assert.ok(capture.input.includes('SE-paper-revising'));
     assert.ok(capture.input.includes(path.join(os.homedir(), '.claude-uni/skills/paper-review/SKILL.md')));
     const standard = JSON.parse(await fs.readFile(path.join(task.proposal, '.claude.json'), 'utf8'));
+    assert.equal(standard.config, undefined);
     assert.ok(standard.input.includes(path.join(os.homedir(), '.claude/skills/paper-review/SKILL.md')));
-  } finally { await fs.rm(temp, { recursive: true, force: true }); }
+    const legacy = { ...configuredAgents()[1], claude_config_dir: path.join(os.homedir(), '.claude') };
+    await runAgent('claude', binary, task, [], 'Existing default conversation without an override', () => {}, [], undefined, legacy).done;
+    assert.equal(JSON.parse(await fs.readFile(path.join(task.proposal, '.claude.json'), 'utf8')).config, undefined);
+    process.env.CLAUDE_CONFIG_DIR = path.join(temp, 'inherited-profile');
+    await runAgent('claude', binary, task, [], 'Existing default conversation', () => {}, [], undefined, legacy).done;
+    const resumed = JSON.parse(await fs.readFile(path.join(task.proposal, 'inherited-profile.json'), 'utf8'));
+    assert.equal(resumed.config, process.env.CLAUDE_CONFIG_DIR);
+    assert.ok(resumed.input.includes(path.join(process.env.CLAUDE_CONFIG_DIR, 'skills/paper-review/SKILL.md')));
+    assert.ok(resumed.args.includes(primary));
+  } finally {
+    if (inherited === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = inherited;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
 });

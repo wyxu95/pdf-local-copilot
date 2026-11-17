@@ -6,6 +6,12 @@ import os from 'node:os';
 import { modelCatalog, runOptions } from '../src/models';
 import { agentArguments, agentEnvironment } from '../src/agent';
 
+test('default Claude environment overrides only requested effort and leaves configuration selection to the CLI', () => {
+  assert.deepEqual(agentEnvironment('claude'), {});
+  assert.deepEqual(agentEnvironment('claude', undefined, { effort: 'high' }), { CLAUDE_CODE_EFFORT_LEVEL: 'high' });
+  assert.equal(agentEnvironment('claude', '~/.claude-uni').CLAUDE_CONFIG_DIR, path.join(os.homedir(), '.claude-uni'));
+});
+
 test('model and effort overrides reach both new and resumed CLI sessions', () => {
   for (const session of [undefined, '11111111-1111-4111-8111-111111111111']) {
     const options = { model: 'selected-model', effort: 'high' };

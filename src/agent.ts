@@ -17,7 +17,7 @@ export interface Note {
 }
 export type Agent = string;
 export function agentEnvironment(agent: AgentKind, directory?: string, options: RunOptions = {}): NodeJS.ProcessEnv {
-  return agent === 'codex' ? {} : { CLAUDE_CONFIG_DIR: claudeConfigDir(directory), ...(options.effort ? { CLAUDE_CODE_EFFORT_LEVEL: options.effort } : {}) };
+  return agent === 'codex' ? {} : { ...(directory ? { CLAUDE_CONFIG_DIR: claudeConfigDir(directory) } : {}), ...(options.effort ? { CLAUDE_CODE_EFFORT_LEVEL: options.effort } : {}) };
 }
 export function agentArguments(agent: AgentKind, session?: string, images: string[] = [], options: RunOptions = {}) {
   if (agent === 'codex') {
@@ -43,7 +43,8 @@ export function prompt(task: Task, notes: Note[], instruction: string, skillFile
 
 export function runAgent(agent: Agent, binary: string, task: Task, notes: Note[], instruction: string, log: (s: string) => void, images: string[] = [], assistant?: (update: AgentUpdate) => void, profile?: AgentProfile, options: RunOptions = {}) {
   const kind = profile?.type || (agent === 'codex' ? 'codex' : 'claude');
-  const child = launch(binary, agentArguments(kind, task.sessions?.[agent], images, options), task.proposal, agentEnvironment(kind, profile?.claude_config_dir, options));
+  const directory = agent === 'claude' ? undefined : profile?.claude_config_dir;
+  const child = launch(binary, agentArguments(kind, task.sessions?.[agent], images, options), task.proposal, agentEnvironment(kind, directory, options));
   let failed: string | undefined, cancelled = false;
   let persistence = Promise.resolve();
   const output = new AgentOutput(update => assistant?.(update));
@@ -88,7 +89,7 @@ export function runAgent(agent: Agent, binary: string, task: Task, notes: Note[]
       else if (code !== 0 || failed) reject(new Error(failed || `${agent} exited with ${signal || code}. See the run output.`));
       else resolve();
     });
-    const config = kind === 'claude' ? claudeConfigDir(profile?.claude_config_dir) : process.env.CODEX_HOME || path.join(homedir(), '.codex');
+    const config = kind === 'claude' ? claudeConfigDir(directory) : process.env.CODEX_HOME || path.join(homedir(), '.codex');
     const content = prompt(task, notes, instruction, path.join(config, 'skills', 'paper-review', 'SKILL.md'));
     if (kind === 'claude' && images.length) {
       void Promise.all(images.map(async image => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: (await fs.readFile(image)).toString('base64') } }))).then(blocks => {

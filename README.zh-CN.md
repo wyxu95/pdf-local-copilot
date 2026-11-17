@@ -126,7 +126,7 @@ PDF 右侧的修改气泡关联本轮要求：
 
 Codex 模型选项读取本地模型缓存，Claude 模型选项包含常用别名与该配置目录中的模型。[Codex 参数说明](https://learn.chatgpt.com/docs/config-file/config-reference)，[Claude 参数说明](https://code.claude.com/docs/en/model-config)。
 
-选择 **＋ Add Claude Agent…**，填写名称与 `claude_config_dir`，例如 `uclaude` 和 `~/.claude-uni`。也可在用户设置中配置：
+默认 Claude Code 代理继承扩展宿主的环境，由 CLI 查找配置：未设置 `CLAUDE_CONFIG_DIR` 时使用 `~/.claude.json`，设置后使用 `$CLAUDE_CONFIG_DIR/.claude.json`。自定义代理也继承该环境，显式填写 `claude_config_dir` 时使用指定目录。选择 **＋ Add Claude Agent…**，填写名称与 `claude_config_dir`，例如 `uclaude` 和 `~/.claude-uni`。也可在用户设置中配置：
 
 ```json
 {

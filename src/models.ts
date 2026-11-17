@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { homedir } from 'node:os';
-import type { AgentKind, AgentProfile } from './agents';
+import { claudeConfigDir, type AgentKind, type AgentProfile } from './agents';
 
 export interface RunOptions { model?: string; effort?: string }
 export interface ModelOption { value: string; label: string; efforts: string[] }
@@ -21,7 +21,7 @@ export async function modelCatalog(profile: AgentProfile): Promise<ModelCatalog>
     } catch { /* A custom model can also be entered before the CLI caches its catalog. */ }
   } else {
     let settings: { model?: string; availableModels?: string[]; modelSettings?: Record<string, unknown> } = {};
-    try { settings = JSON.parse(await fs.readFile(path.join(profile.claude_config_dir!, 'settings.json'), 'utf8')); } catch {}
+    try { settings = JSON.parse(await fs.readFile(path.join(claudeConfigDir(profile.id === 'claude' ? undefined : profile.claude_config_dir), 'settings.json'), 'utf8')); } catch {}
     const names = settings.availableModels || ['opus', 'sonnet', 'haiku', 'fable', 'opus[1m]', 'sonnet[1m]', ...Object.keys(settings.modelSettings || {})];
     for (const value of new Set([...(settings.model ? [settings.model] : []), ...names])) models.push({ value, label: value, efforts });
   }

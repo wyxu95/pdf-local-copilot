@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { configuredAgents, claudeConfigDir } from '../src/agents';
+test('default and named Claude agents inherit the CLI environment until a directory is explicitly configured', () => {
+  const inherited = process.env.CLAUDE_CONFIG_DIR;
+  try {
+    for (const directory of [undefined, '/tmp/inherited-claude']) {
+      if (directory === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = directory;
+      const profiles = configuredAgents([{ name: 'terminal-claude', type: 'claude' }, { name: 'blank-profile', type: 'claude', claude_config_dir: ' ' }]);
+      for (const profile of profiles.filter(profile => profile.type === 'claude')) assert.equal(profile.claude_config_dir, undefined);
+    }
+  } finally { if (inherited === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = inherited; }
+});
 test('named Claude profiles use arbitrary independent directories and inherit the configured binary', () => {
   const profiles = configuredAgents([{ name: 'uclaude', type: 'claude', claude_config_dir: '~/.claude-uni' }, { name: 'lab-reviewer', type: 'claude', claude_config_dir: '/tmp/lab-claude' }], { codex: '/bin/codex', claude: '/bin/claude' });
   assert.equal(profiles.length, 4); assert.equal(profiles[2].id, 'custom:uclaude'); assert.equal(profiles[2].command, '/bin/claude');

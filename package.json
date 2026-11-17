@@ -2,7 +2,7 @@
   "name": "pdf-local-copilot",
   "displayName": "Paper Copilot",
   "description": "Annotate your paper, revise with local Codex or Claude, and review live TeXpresso previews.",
-  "version": "0.8.3",
+  "version": "0.8.6",
   "publisher": "local-paper-tools",
   "license": "MIT",
   "engines": {
