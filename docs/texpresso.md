@@ -35,6 +35,13 @@ pinned revision. The PDF-links patch supplies equivalent metadata for the PDF
 backend used with pdfLaTeX or LuaLaTeX builds. The viewer resolves citation and
 float targets locally and crops their rendered pages for hover previews.
 
+The `pdfLocal.engine` setting selects XeLaTeX (the default) or pdfLaTeX. Reopen
+the paper after changing it. pdfLaTeX uses `latexmk -pdf`, and TeXpresso renders
+its PDF output. Saved source changes trigger a full build and refresh the preview.
+XeLaTeX uses the incremental XeTeX backend, including unsaved edits. Main-file
+`% !TeX program` and `% !TeX TS-program` directives take precedence; `lualatex`
+selects full builds and PDF rendering.
+
 ## Build and verify
 
 ```sh

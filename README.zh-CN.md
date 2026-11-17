@@ -1,4 +1,4 @@
-# PDF Local Copilot
+# Paper Copilot
 
 [English](README.md) | 简体中文
 
@@ -22,7 +22,7 @@
 
 Windows 上继续使用 Windows 版 VS Code。先用 **WSL: Reopen Folder in WSL** 或 **Remote-SSH: Connect to Host…** 打开项目，再在该远程窗口安装对应后端的 VSIX。TeXpresso、TeX、Codex／Claude 和它们的登录、配置目录都在项目所在的后端；PDF、聊天和编辑器界面显示在 Windows。
 
-运行 **PDF Local Copilot: Check Setup** 可查看版本、安装路径、后端系统、连接方式和工具检测结果。详细步骤见 [Windows／远程安装说明](docs/windows-remote.md)。
+运行 **Paper Copilot: Check Setup** 可查看版本、安装路径、后端系统、连接方式和工具检测结果。详细步骤见 [Windows／远程安装说明](docs/windows-remote.md)。
 
 也可以按 [源码构建步骤](README.md#build-and-install) 构建当前平台的包，例如 Mac ARM64：
 
@@ -34,7 +34,7 @@ Mac 桌面版与 Remote SSH 后端分别维护扩展安装。在 Mac 上的仓�
 
 推送与 `package.json` 版本一致的标签（例如 `v0.8.3`）会构建三种平台的包，并在所有目标成功后发布到 Releases。运行插件的后端仍需安装相应的原生库和 TeX 环境。
 
-打开论文项目和 `paper.tex`，点击标题栏 **PDF Local Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
+打开论文项目和 `paper.tex`，点击标题栏 **Paper Copilot: Open Paper**。TeX 在左、当前 PDF 在中间、独立的“论文对话”在右；各分组可用 VS Code 原生分隔线调整宽度。
 
 代理在真实项目目录启动，直接读写项目文件。发送前保存当前编辑，PDF 增量渲染同一份工作稿。原生 Diff 的修改侧也是这个真实文件，可直接编辑。
 
@@ -144,11 +144,13 @@ Codex 模型选项读取本地模型缓存，Claude 模型选项包含常用别�
 
 需要 VS Code 1.96+、TeX Live / MacTeX（含 latexmk、SyncTeX，以及项目使用的 BibTeX / Biber）和至少一个本地代理。
 
-默认实时渲染使用 TeXpresso 自带的修改版 XeTeX（`texpresso-xetex`），包括未保存编辑；[官方设计说明](https://github.com/let-def/texpresso#design)。新页面解码完成后与文字层一起替换，连续更新保持阅读宽度。
+在 VS Code 工作区设置中搜索 `pdfLocal.engine`，或在 `.vscode/settings.json` 添加 `"pdfLocal.engine": "xelatex"`（默认）或 `"pdfLocal.engine": "pdflatex"`。修改后重新打开论文预览生效。主文件的 `% !TeX program` 和 `% !TeX TS-program` 声明优先于此设置。
+
+默认使用 XeLaTeX，TeXpresso 自带的修改版 XeTeX（`texpresso-xetex`）增量预览未保存编辑；[官方设计说明](https://github.com/let-def/texpresso#design)。完整构建由 `latexmk -pdfxe` 处理引用、文献和目录。新页面解码完成后与文字层一起替换，连续更新保持阅读宽度。
 
 相同的页面图片会被复用，文字坐标、链接和源码定位信息仍随稿件更新。重载或页面缓存缺失时会自动补回完整图片。
 
-完整构建由 `latexmk -pdfxe` 处理引用、文献和目录。主文件的 `% !TeX program = pdflatex` 或 `lualatex` 可选择其他引擎，通过完整构建刷新 PDF。构建读取项目 `.latexmkrc`，Problems 和 Output 提供诊断。
+选择 pdfLaTeX 时使用 `latexmk -pdf` 编译，TeXpresso 显示生成的 PDF，保存源码后自动重新编译并刷新，预览保持 pdfLaTeX 的排版。主文件的 `% !TeX program = lualatex` 可选择 LuaLaTeX，在保存后通过完整构建刷新 PDF。构建读取项目 `.latexmkrc`，Problems 和 Output 提供诊断。
 
 完整构建前的额外步骤可配置为：
 

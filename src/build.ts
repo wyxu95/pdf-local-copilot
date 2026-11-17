@@ -37,10 +37,10 @@ export async function resolveMain(file: string, root: string): Promise<string[]>
     return mainCandidates(root);
   }
 }
-export async function engineFor(main: string): Promise<TexEngine> {
+export async function engineFor(main: string, preferred: TexEngine = 'xelatex'): Promise<TexEngine> {
   const text = await fs.readFile(main, 'utf8'), magic = text.match(/^\s*%\s*!\s*TeX\s+(?:program|TS-program)\s*=\s*(\S+)/im)?.[1]?.toLowerCase();
   if (magic && !['xelatex', 'pdflatex', 'lualatex'].includes(magic)) throw new Error(`Unsupported TeX engine ${magic}. Choose XeLaTeX, pdfLaTeX, or LuaLaTeX.`);
-  return (magic as TexEngine) || 'xelatex';
+  return (magic as TexEngine) || preferred;
 }
 export function parseProblems(output: string, cwd: string): BuildProblem[] {
   return output.split(/\r?\n/).flatMap(line => { const m = line.match(/^(.+?\.tex):(\d+):\s*(.+)/); return m ? [{ file: path.resolve(cwd, m[1]), line: Number(m[2]), message: m[3] }] : []; });

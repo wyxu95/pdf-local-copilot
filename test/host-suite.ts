@@ -9,6 +9,7 @@ export async function run() {
   await vscode.workspace.getConfiguration().update('window.menuStyle', 'custom', vscode.ConfigurationTarget.Global);
   await vscode.workspace.getConfiguration('git').update('openRepositoryInParentFolders', 'never', vscode.ConfigurationTarget.Global);
   await vscode.workspace.getConfiguration('pdfLocal').update('codexPath', path.join(root, 'output/host/fake-codex'), vscode.ConfigurationTarget.Global);
+  await vscode.workspace.getConfiguration('pdfLocal').update('engine', 'pdflatex', vscode.ConfigurationTarget.Global);
   const extension = vscode.extensions.getExtension('local-paper-tools.pdf-local-copilot');
   await vscode.commands.executeCommand('notifications.clearAll');
   if (!extension) throw new Error('Extension did not load.');

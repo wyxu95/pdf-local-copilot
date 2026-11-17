@@ -14,8 +14,8 @@ let browser, page;
       await page.getByRole('button', { name: 'Open Quick Access', exact: true }).click();
       try { await input().waitFor({ timeout: 1200 }); break; } catch (e) { if (attempt === 3) throw e; await page.keyboard.press('Escape'); }
     }
-    await input().fill(`>PDF Local Copilot: ${title}`);
-    const row = page.locator('.quick-input-widget:visible .monaco-list-row').filter({ hasText: `PDF Local Copilot: ${title}` }).first(); await row.waitFor(); await row.click();
+    await input().fill(`>Paper Copilot: ${title}`);
+    const row = page.locator('.quick-input-widget:visible .monaco-list-row').filter({ hasText: `Paper Copilot: ${title}` }).first(); await row.waitFor(); await row.click();
   }
   async function showPaper() {
     const tab = page.getByRole('tab', { name: /^Paper(?:$| -)/ });
@@ -38,11 +38,11 @@ let browser, page;
     return row;
   }
   const main = path.resolve('output/host/paper/main.tex'), original = await fs.readFile(main, 'utf8');
-  await page.getByRole('button', { name: 'PDF Local Copilot: Open Paper', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Paper Copilot: Open Paper', exact: true }).waitFor();
   await page.keyboard.press('Control+g'); await input().fill(':20'); await page.keyboard.press('Enter'); await input().waitFor({ state: 'hidden' });
   const sourceLine = () => page.locator('.view-line').filter({ hasText: 'Our approach makes the writing process' }).first();
   await sourceLine().click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /PDF Local Copilot: Go to PDF Location/ }).click();
+  await page.getByRole('menuitem', { name: /Paper Copilot: Go to PDF Location/ }).click();
   let frame;
   await until(async () => { for (const f of page.frames()) if (await f.locator('#paper .page-image').count().catch(() => 0)) { frame = f; return true; } return false; });
   await frame.waitForFunction(() => !document.querySelector('#paper').classList.contains('stale'));
@@ -144,7 +144,7 @@ let browser, page;
   const afterSelection = PNG.sync.read(await page.screenshot({ path: 'output/playwright/vscode-unicode-selection.png' }));
   const selectionOffset = await frame.locator('body').boundingBox(), pixelScale = beforeSelection.width / await page.evaluate(() => innerWidth);
   const shades = [];
-  for (let y = Math.ceil((selectionOffset.y + selectionBox.top + 2) * pixelScale); y < (selectionOffset.y + selectionBox.bottom - 2) * pixelScale; y++) for (let x = Math.ceil((selectionOffset.x + selectionBox.left + 2) * pixelScale); x < (selectionOffset.x + selectionBox.right - 2) * pixelScale; x++) {
+  for (let y = Math.ceil((selectionOffset.y + selectionBox.top + 1) * pixelScale); y < (selectionOffset.y + selectionBox.bottom - 1) * pixelScale; y++) for (let x = Math.ceil((selectionOffset.x + selectionBox.left + 2) * pixelScale); x < (selectionOffset.x + selectionBox.right - 2) * pixelScale; x++) {
     const i = (y * beforeSelection.width + x) * 4;
     if ([0, 1, 2].every(c => beforeSelection.data[i + c] === 255)) shades.push([...afterSelection.data.subarray(i, i + 3)]);
   }
@@ -178,7 +178,7 @@ let browser, page;
   await frame.locator(`.note-marker[data-note-id="${firstId}"]`).click(); await popup.waitFor({ state: 'visible' });
   await popup.getByRole('button', { name: 'Edit', exact: true }).click(); await popup.getByRole('textbox', { name: 'Annotation text', exact: true }).fill('Rewrite this sentence concisely and fix the grammar.\nPreserve technical meaning.');
   await popup.getByRole('button', { name: 'Save', exact: true }).click(); await until(async () => (JSON.parse(await fs.readFile(noteFile, 'utf8')).notes[0].comment.includes('\nPreserve')));
-  // Keep the opened comment anchored when scrolling, zooming, and typing unsaved TeX.
+  // Keep the opened comment anchored when scrolling, zooming, and rebuilding saved TeX.
   const relativePopup = () => frame.evaluate(() => {
     const popup = document.querySelector('#annotation-popover').getBoundingClientRect(), marks = [...document.querySelectorAll('#paper .note-highlight')].map(n => n.getBoundingClientRect());
     return popup.top - Math.max(...marks.map(r => r.bottom));
@@ -196,8 +196,10 @@ let browser, page;
   });
   await sourceTab.click(); await page.keyboard.press('Control+g'); await input().fill(':16'); await page.keyboard.press('Enter'); await input().waitFor({ state: 'hidden' }); await page.keyboard.press('Meta+ArrowLeft');
   await page.keyboard.type('Live editing keeps annotations aligned. Live editing updates the preview. ', { delay: 25 });
+  assert.equal(await fs.readFile(main, 'utf8'), original, 'Typing unexpectedly saved the manuscript');
+  await page.keyboard.press('Meta+s');
   await until(async () => (await frame.locator('#paper .text-layer').textContent()).includes('Live editing keeps annotations aligned.') && !await frame.locator('#paper').evaluate(n => n.classList.contains('stale')));
-  assert.equal(await fs.readFile(main, 'utf8'), original, 'Live editing unexpectedly saved the manuscript');
+  assert.ok((await fs.readFile(main, 'utf8')).includes('Live editing keeps annotations aligned.'));
   assert.ok(await popup.isVisible()); assert.ok(Math.abs(await relativePopup() - noteGap) < 1);
   const followsText = await frame.evaluate(() => {
     const nodes = [...document.querySelectorAll('#paper .text-layer span')], text = nodes.map(n => n.textContent).join(''), glyph = nodes[text.indexOf('Our approach')].getBoundingClientRect(), mark = document.querySelector('#paper .note-highlight').getBoundingClientRect();
@@ -207,7 +209,7 @@ let browser, page;
   const audit = await frame.evaluate(() => { clearInterval(liveSample); liveObserver.disconnect(); return liveAudit; });
   assert.ok(audit.commits > 0); assert.equal(audit.blank, 0, 'An undecoded page was shown while typing'); assert.equal(audit.faded, 0, 'The preview faded while typing');
   await page.screenshot({ path: 'output/playwright/vscode-live-annotation.png' });
-  await page.getByRole('button', { name: 'Open Quick Access', exact: true }).click(); await input().fill('>File: Revert File'); await page.locator('.quick-input-widget:visible .monaco-list-row').filter({ hasText: 'File: Revert File' }).first().click();
+  await fs.writeFile(main, original);
   await until(async () => !(await frame.locator('#paper .text-layer').textContent()).includes('Live editing keeps annotations aligned.'));
   assert.ok(await popup.isVisible());
   await showPaper();
@@ -241,7 +243,7 @@ let browser, page;
   await frame.locator('#paper-2').click({ position: blank, modifiers: ['Control'] });
   await until(async () => { try { const jump = JSON.parse(await fs.readFile('output/host/source-jump.json', 'utf8')); return jump.line >= 18 && jump.line <= 23; } catch { return false; } });
   await frame.locator('#viewport').evaluate(v => { v.scrollTop = 0; });
-  await sourceLine().click({ button: 'right' }); await page.getByRole('menuitem', { name: /PDF Local Copilot: Go to PDF Location/ }).click();
+  await sourceLine().click({ button: 'right' }); await page.getByRole('menuitem', { name: /Paper Copilot: Go to PDF Location/ }).click();
   await frame.locator('#paper-2 .source-location').waitFor();
   await frame.waitForFunction(() => { const mark = document.querySelector('#paper-2 .source-location').getBoundingClientRect(), view = document.querySelector('#viewport').getBoundingClientRect(); return mark.top >= view.top && mark.bottom <= view.bottom; });
   assert.equal(await page.getByRole('tab', { name: /^(?:Paper|Original) · main\.tex/ }).count(), 1, 'Forward sync opened a duplicate PDF');
@@ -260,7 +262,7 @@ let browser, page;
   await page.getByRole('treeitem').filter({ hasText: 'Rewrite this sentence concisely' }).first().getByRole('checkbox').click();
   await until(async () => await chat.locator('.queued-note').count() === 1);
   await page.getByText('PDF Annotations', { exact: true }).hover();
-  await page.getByRole('button', { name: 'PDF Local Copilot: Select All Annotations', exact: true }).click();
+  await page.getByRole('button', { name: 'Paper Copilot: Select All Annotations', exact: true }).click();
   await until(async () => await chat.locator('.queued-note').count() === 2); assert.equal((await calls()).length, 0, 'Selecting all annotations started the agent');
   await page.screenshot({ path: 'output/playwright/vscode-chat-task-draft.png' });
   const sessionId = (await conversation()).id;
@@ -271,7 +273,7 @@ let browser, page;
   await chat.locator('#chat-input').evaluate(el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })));
   assert.equal((await calls()).length, 0);
   await page.getByText('PDF Annotations', { exact: true }).hover();
-  await page.getByRole('button', { name: 'PDF Local Copilot: Send Selected Annotations', exact: true }).click(); await page.keyboard.press('Meta+b');
+  await page.getByRole('button', { name: 'Paper Copilot: Send Selected Annotations', exact: true }).click(); await page.keyboard.press('Meta+b');
   await until(async () => await chat.locator('.chat-message.user.running').count() >= 1);
   await until(async () => (await chat.locator('.chat-message.assistant.running .chat-message-text').textContent()).includes('Reading main.tex'));
   await chat.locator('.agent-activity summary').filter({ hasText: 'cat main.tex' }).first().click();
@@ -376,7 +378,7 @@ let browser, page;
   assert.equal(await frame.locator('.review-marker.pending').count(), pending, 'Selecting a checkbox accepted the change');
   assert.equal(JSON.parse(await fs.readFile(noteFile, 'utf8')).notes.find(note => note.id === firstId).status, 'reviewing');
   assert.equal((await historyPoints()).length, 0, 'Selecting a checkbox created a history checkpoint');
-  await page.getByRole('button', { name: 'PDF Local Copilot: Accept Selected Changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Paper Copilot: Accept Selected Changes', exact: true }).click();
   await until(async () => await page.getByRole('treeitem').filter({ hasText: 'improves the efficiency' }).count() === 0);
   await until(async () => (await historyPoints()).length === 1);
   assert.deepEqual((await historyPoints())[0].files.map(file => file.file), ['main.tex']);
@@ -398,7 +400,7 @@ let browser, page;
     await until(async () => await page.getByRole('treeitem').filter({ hasText: text }).first().getByRole('checkbox').getAttribute('aria-checked') === 'true');
     await until(async () => (await conversation()).selectedEdits?.length === index + 1);
   }
-  await page.getByRole('button', { name: 'PDF Local Copilot: Accept Selected Changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Paper Copilot: Accept Selected Changes', exact: true }).click();
   for (const text of ['RevisedReferenceTitle', '2035', 'newCodeValue', 'UpdatedPlanDescription']) await until(async () => await page.getByRole('treeitem').filter({ hasText: text }).count() === 0);
   await until(async () => (await historyPoints()).length === 2);
   assert.equal((await historyPoints())[1].files.length, 3, 'A batch approval did not create one multi-file checkpoint');

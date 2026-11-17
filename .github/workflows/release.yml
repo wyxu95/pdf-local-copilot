@@ -30,7 +30,7 @@ jobs:
             if [ -f "$release_notes" ]; then
               notes=(--notes-file "$release_notes")
             fi
-            gh release create "$RELEASE_TAG" --draft --verify-tag --title "PDF Local Copilot $RELEASE_TAG" "${notes[@]}"
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "Paper Copilot $RELEASE_TAG" "${notes[@]}"
           fi
 
   build:

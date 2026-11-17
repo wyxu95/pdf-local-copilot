@@ -7,7 +7,7 @@ if (process.platform !== 'darwin') throw new Error('Run this installer on the Ma
 if (!process.argv[2]) throw new Error('Usage: npm run install:mac -- /path/to/pdf-local-copilot-darwin-arm64.vsix');
 const archive = path.resolve(process.argv[2]);
 const manifest = JSON.parse(execFileSync('/usr/bin/unzip', ['-p', archive, 'extension/package.json'], { encoding: 'utf8' }));
-if (manifest.publisher !== 'local-paper-tools' || manifest.name !== 'pdf-local-copilot') throw new Error('Choose a PDF Local Copilot VSIX.');
+if (manifest.publisher !== 'local-paper-tools' || manifest.name !== 'pdf-local-copilot') throw new Error('Choose a Paper Copilot VSIX.');
 const targets = ['/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'];
 const directory = path.join(homedir(), '.vscode-server', 'cli', 'servers');
 const servers = [];

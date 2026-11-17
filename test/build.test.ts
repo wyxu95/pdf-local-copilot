@@ -6,24 +6,55 @@ import path from 'node:path';
 import { BuildManager, resolveMain, engineFor } from '../src/build';
 import { externalPosition, externalLocation } from '../src/synctex';
 import { LivePreview } from '../src/live';
-test('magic roots, BibTeX builds, and external SyncTeX work with real TeX Live', { timeout: 60000 }, async () => {
+test('configured pdfLaTeX builds render and refresh with BibTeX and external SyncTeX', { timeout: 60000 }, async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-build-')); const root = await fs.realpath(temp);
   const main = path.join(root, 'main.tex');
-  await fs.writeFile(main, '% !TeX program = pdflatex\n\\documentclass{article}\n\\begin{document}\nA cited result \\cite{sample}.\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n');
+  const text = '\\documentclass{article}\n\\ifdefined\\pdftexversion\\else\\errmessage{pdfLaTeX required}\\fi\n\\begin{document}\nA cited result \\cite{sample}.\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n';
+  await fs.writeFile(main, text);
   await fs.writeFile(path.join(root, 'chapter.tex'), '% !TeX root = main.tex\nSome chapter.');
   await fs.writeFile(path.join(root, 'refs.bib'), '@article{sample, author={Test Author}, title={A Resolved Citation}, journal={Test Journal}, year={2024}}');
-  const build = new BuildManager(root, main, await engineFor(main), () => {});
+  const build = new BuildManager(root, main, await engineFor(main, 'pdflatex'), () => {});
+  let preview: LivePreview | undefined;
   try {
+    assert.equal(await engineFor(main), 'xelatex');
+    assert.equal(await engineFor(main, 'xelatex'), 'xelatex');
+    assert.equal(build.engine, 'pdflatex');
     assert.deepEqual(await resolveMain(path.join(root, 'chapter.tex'), root), [main]);
     const result = await build.build(); assert.equal(result.engine, 'pdflatex');
     assert.ok((await fs.readFile(path.join(build.directory, 'main.bbl'), 'utf8')).toLowerCase().includes('resolved'));
     const point = await externalPosition(result.pdf, main, 4, root);
     const source = await externalLocation(result.pdf, point.page, point.x, point.y, root);
     assert.equal(source.file, main); assert.ok(source.line >= 3);
+    preview = new LivePreview(path.resolve('native/texpresso'), root, main, { frame: () => {}, state: () => {}, log: () => {}, error: error => { throw error; } }, { pdf: result.pdf });
+    await preview.start();
+    for (const expected of ['A cited result', 'A revised result']) {
+      const deadline = Date.now() + 15000;
+      while (!preview.lastFrame?.header.characters?.map(char => String.fromCodePoint(char[0])).join('').includes(expected)) {
+        assert.ok(Date.now() < deadline, `PDF preview did not render ${expected}`);
+        await new Promise(resolve => setTimeout(resolve, 30));
+      }
+      const location = await preview.locate(preview.lastFrame!.header, point.x, point.y);
+      assert.equal(location.file, main);
+      if (expected === 'A cited result') {
+        preview.buildPending(true);
+        await fs.writeFile(main, text.replace('A cited result', 'A revised result'));
+        await build.build(); preview.buildPending(false); preview.rescan();
+      }
+    }
     const before = await fs.readFile(result.pdf);
     await fs.writeFile(main, '\\documentclass{article}\n\\begin{document}\\undefinedcommand\\end{document}');
     await assert.rejects(build.build(), /build failed/); assert.deepEqual(await fs.readFile(result.pdf), before, 'A failed build replaced the last valid PDF');
-  } finally { await build.stop(); await fs.rm(temp, { recursive: true, force: true }); }
+  } finally { await preview?.stop(); await build.stop(); await fs.rm(temp, { recursive: true, force: true }); }
+});
+test('explicit TeX engine directives override the configured engine', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-engine-')), main = path.join(temp, 'main.tex');
+  try {
+    for (const directive of ['program', 'TS-program']) for (const engine of ['pdflatex', 'xelatex', 'lualatex']) {
+      await fs.writeFile(main, `% !TeX ${directive} = ${engine}\n\\documentclass{article}`);
+      assert.equal(await engineFor(main, 'pdflatex'), engine);
+      assert.equal(await engineFor(main, 'xelatex'), engine);
+    }
+  } finally { await fs.rm(temp, { recursive: true, force: true }); }
 });
 test('Biber, project pre-build steps, and the PDF preview backend work together', { timeout: 90000 }, async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-biber-')), root = await fs.realpath(temp), main = path.join(root, 'main.tex');

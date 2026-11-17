@@ -16,7 +16,7 @@ await writeFile(path.join(root, 'output/host/paper/refs.bib'), '@article{testA,\
 await writeFile(path.join(root, 'output/host/paper/unchanged.dat'), 'Unchanged project asset');
 await writeFile(path.join(root, 'output/host/paper/helper.js'), 'export const result = "oldCodeValue";\n');
 await writeFile(path.join(root, 'output/host/paper/writingplan.md'), '# Plan\n\nOldPlanDescription\n');
-execFileSync('/Library/TeX/texbin/latexmk', ['-pdfxe', '-synctex=1', '-interaction=nonstopmode', 'main.tex'], { cwd: path.join(root, 'output/host/paper'), stdio: 'pipe', maxBuffer: 4 * 1024 * 1024 });
+execFileSync('/Library/TeX/texbin/latexmk', ['-pdf', '-synctex=1', '-interaction=nonstopmode', 'main.tex'], { cwd: path.join(root, 'output/host/paper'), stdio: 'pipe', maxBuffer: 4 * 1024 * 1024 });
 const paperRoot = path.join(root, 'output/host/paper'), legacyDir = path.join(root, 'output/host/profile/User/globalStorage/local-paper-tools.pdf-local-copilot/tasks/legacy-review');
 await cp(paperRoot, path.join(legacyDir, 'baseline'), { recursive: true }); await cp(paperRoot, path.join(legacyDir, 'proposal'), { recursive: true });
 await writeFile(path.join(legacyDir, 'proposal/main.tex'), 'Unapplied legacy proposal to archive.');

@@ -7,7 +7,7 @@ import type { Frame, FrameHeader } from './protocol';
 import { type Task, changes, inside, WorkingTree } from './project';
 import { type Note, type Agent, runAgent } from './agent';
 import { type Review, type Edit, type Decision, type ReviewRequest, makeReview, materialize, reviewPlan, decide, editPosition, loadReview, saveReview, mapLine, associateReview, resolvedNoteIds } from './review';
-import { BuildManager, engineFor, parseProblems, type BuildStep } from './build';
+import { BuildManager, engineFor, parseProblems, type BuildStep, type TexEngine } from './build';
 import { trackNotes, quoteGeometry, nearbyGeometry, regionGeometry, locateAnnotation } from './anchors';
 import { applyWithUndo, undoApplication, recordWorkspace } from './history';
 import { ConversationStore, type QueuedTurn } from './conversation';
@@ -369,7 +369,7 @@ export class Paper {
   private async startSide(side: 'before' | 'after', root: string, relativeMain: string) {
     const oldPreview = side === 'before' ? this.before : this.after, oldBuild = side === 'before' ? this.beforeBuild : this.afterBuild;
     await oldPreview?.stop(); await oldBuild?.stop();
-    const main = path.join(root, relativeMain), engine = await engineFor(main);
+    const main = path.join(root, relativeMain), engine = await engineFor(main, this.configuration.get<TexEngine>('engine', 'xelatex'));
     const steps = this.configuration.get<BuildStep[]>('buildSteps', []).map(step => ({ command: step.command, args: step.args.map(a => a.replaceAll('${workspaceFolder}', root)) }));
     const build = new BuildManager(root, main, engine, text => this.log(text), steps);
     if (side === 'before') this.beforeBuild = build; else this.afterBuild = build;

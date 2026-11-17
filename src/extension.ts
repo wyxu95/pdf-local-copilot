@@ -22,7 +22,7 @@ const papers = new Set<Paper>();
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.workspace.registerFileSystemProvider('pdfLocal.history', new HistoryFiles(), { isReadonly: true, isCaseSensitive: true }));
   const reviewBase = new ReviewBase(); context.subscriptions.push(reviewBase, vscode.workspace.registerTextDocumentContentProvider('pdfLocal.reviewBase', reviewBase));
-  output = vscode.window.createOutputChannel('PDF Local Copilot'); diagnostics = vscode.languages.createDiagnosticCollection('pdfLocal');
+  output = vscode.window.createOutputChannel('Paper Copilot'); diagnostics = vscode.languages.createDiagnosticCollection('pdfLocal');
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 30); status.command = 'pdfLocal.selectPage';
   notesTree = new NotesTree(); changesTree = new ChangesTree();
   notesView = vscode.window.createTreeView('pdfLocal.notes', { treeDataProvider: notesTree, manageCheckboxStateManually: true });
@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
     notesView.onDidChangeCheckboxState(e => { for (const [item, checked] of e.items) item.paper.selectNote(item.note.id, checked === vscode.TreeItemCheckboxState.Checked); }),
     changesView.onDidChangeCheckboxState(e => { for (const [item, checked] of e.items) item.paper.selectReviewEdits(item.edit?.id || item.file.file, checked === vscode.TreeItemCheckboxState.Checked, !item.edit); }));
   const register = (name: string, action: (arg?: any) => unknown) => context.subscriptions.push(vscode.commands.registerCommand(`pdfLocal.${name}`, async arg => { try { return await action(arg); } catch (e) { report(e); } }));
-  const setupOutput = vscode.window.createOutputChannel('PDF Local Copilot Setup'); context.subscriptions.push(setupOutput);
+  const setupOutput = vscode.window.createOutputChannel('Paper Copilot Setup'); context.subscriptions.push(setupOutput);
   register('checkSetup', async () => {
     setupOutput.clear(); setupOutput.show(true);
     setupOutput.appendLine(`Version: ${context.extension.packageJSON.version}\nBackend: ${process.platform}-${process.arch}\nConnection: ${vscode.env.remoteName || 'local'}\nExtension: ${context.extensionPath}`);

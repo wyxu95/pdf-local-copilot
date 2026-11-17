@@ -31,7 +31,7 @@ const until = async fn => { const deadline = Date.now() + 60000; while (Date.now
   await until(async () => { try { browser = await chromium.connectOverCDP('http://127.0.0.1:9341'); return true; } catch { return false; } });
   await until(async () => { page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().includes('workbench')); return !!page; });
   await page.getByRole('treeitem', { name: /^main\.tex/ }).dblclick();
-  await page.getByRole('button', { name: 'PDF Local Copilot: Open Paper', exact: true }).click();
+  await page.getByRole('button', { name: 'Paper Copilot: Open Paper', exact: true }).click();
   const check = async () => {
     let pdf, chat;
     await until(async () => { for (const frame of page.frames()) { if (await frame.locator('#paper .page-image').count().catch(() => 0)) pdf = frame; if (await frame.locator('body.chat-only #chat-agent').count().catch(() => 0)) chat = frame; } return !!pdf && !!chat; });

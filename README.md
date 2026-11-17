@@ -1,4 +1,4 @@
-# PDF Local Copilot
+# Paper Copilot
 
 **Annotate the PDF. Talk to your local agent. Review the changes in VS Code.**
 
@@ -6,7 +6,7 @@ English | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/wyxu95/pdf-local-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/wyxu95/pdf-local-copilot/actions/workflows/ci.yml)
 
-PDF Local Copilot is a VS Code extension for revising LaTeX papers with your installed **Codex or Claude Code CLI**. Read the rendered paper, attach a request to a passage or figure, and review the resulting edits beside a live [TeXpresso](https://github.com/let-def/texpresso) preview.
+Paper Copilot is a VS Code extension for revising LaTeX papers with your installed **Codex or Claude Code CLI**. Read the rendered paper, attach a request to a passage or figure, and review the resulting edits beside a live [TeXpresso](https://github.com/let-def/texpresso) preview.
 
 The workflow is inspired by [Papilot](https://github.com/PapilotAI/papilot): revision requests belong next to the passage you are reading. This project brings that interaction into VS Code, with local CLI sessions and native editor groups, trees, diffs, menus, and output panels.
 
@@ -116,7 +116,7 @@ Open [Releases](https://github.com/wyxu95/pdf-local-copilot/releases/latest), do
 the `.vsix` under **Assets**, and install it with **Extensions: Install from VSIX…**.
 Choose `darwin-arm64`, `linux-x64`, or `linux-arm64` to match the workspace host.
 Connect the window to WSL or SSH before installing a remote package. Run
-**PDF Local Copilot: Check Setup** to inspect the backend host and its tools.
+**Paper Copilot: Check Setup** to inspect the backend host and its tools.
 
 Pushing a version tag matching `package.json`, such as `v0.8.3`, runs the
 [Release workflow](.github/workflows/release.yml): it checks TypeScript, builds
@@ -125,7 +125,7 @@ a draft GitHub Release. The release becomes public after every target succeeds.
 Release notes come from `docs/releases/<tag>.md` when available. Release-candidate
 tags containing `-rc.` keep their release in draft for validation.
 
-Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **PDF Local Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
+Open your paper's project folder, trust the workspace, and open the main `.tex` file. Click **Paper Copilot: Open Paper** in the editor title bar. The extension opens the current PDF to the right of the source, followed by the paper conversation.
 
 An existing PDF can also be opened with **Open With… → Paper PDF Annotations**. Main-file discovery supports a matching `.tex` filename and `% !TeX root = …` directives.
 
@@ -167,8 +167,14 @@ Local CLIs use their own configured model providers. Extension orchestration and
 
 ## Rendering and navigation
 
-- **Live preview:** TeXpresso's modified XeTeX engine, `texpresso-xetex`, incrementally renders the working document.
-- **Complete builds:** `latexmk -pdfxe` resolves references and bibliographies. A main-file directive such as `% !TeX program = pdflatex` or `lualatex` selects the corresponding full-build path. Project `.latexmkrc` files are supported.
+Search for `pdfLocal.engine` in VS Code's workspace settings, or add
+`"pdfLocal.engine": "xelatex"` (the default) or `"pdfLocal.engine": "pdflatex"`
+to `.vscode/settings.json`. Reopen the paper after changing the setting.
+Main-file `% !TeX program` and `% !TeX TS-program` directives take precedence.
+
+- **XeLaTeX (default):** TeXpresso's modified XeTeX engine, `texpresso-xetex`, incrementally previews the working document, including unsaved edits. Complete builds use `latexmk -pdfxe` to resolve references and bibliographies.
+- **pdfLaTeX:** Set `pdfLocal.engine` to `pdflatex` to build with `latexmk -pdf`. TeXpresso displays the resulting PDF and refreshes after saved source changes are rebuilt, preserving pdfLaTeX's layout.
+- **Project engines:** Main-file engine directives can also select `lualatex`, which refreshes the compiled PDF after saving. Project `.latexmkrc` files are supported.
 - **PDF → source:** Ctrl+click near rendered text; Cmd+click also works on macOS.
 - **Source → PDF:** use **Go to PDF Location** in the TeX editor context menu.
 - **Reading:** continuous pages with a 5 px gap, cropped horizontal whitespace, zoom, and fit-to-width.

@@ -21,7 +21,7 @@ export async function probe(binary: string) {
   if (process.platform === 'win32') throw new Error('Open a WSL or Remote SSH window and install the VSIX matching that workspace host. The extension backend, TeXpresso, and agent CLIs run beside the project.');
   return new Promise<void>((resolve, reject) => {
     execFile(binary, ['-capabilities'], { env: localEnvironment(), timeout: 4000, maxBuffer: 65536 }, (error, stdout) => {
-      if (error) { reject(new Error(`Cannot run TeXpresso at ${binary}: ${error.message}. Run PDF Local Copilot: Check Setup to verify the tools and native libraries on the workspace host. Source builds can use npm run native:build, or set pdfLocal.texpressoPath.`)); return; }
+      if (error) { reject(new Error(`Cannot run TeXpresso at ${binary}: ${error.message}. Run Paper Copilot: Check Setup to verify the tools and native libraries on the workspace host. Source builds can use npm run native:build, or set pdfLocal.texpressoPath.`)); return; }
       try {
         const capabilities = JSON.parse(stdout);
         if (capabilities.previewProtocol !== 1 || !capabilities.codecs?.includes('png') || !capabilities.synctex) throw new Error('This TeXpresso build needs the headless preview protocol. See README for the pinned build.');

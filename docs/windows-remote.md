@@ -59,7 +59,7 @@ package for the **workspace host**, including its CPU architecture. Run
    While the WSL window is connected, run **Extensions: Install from VSIX…** and
    select that file. Confirm the extension appears in the **WSL** installed category.
 
-6. Run **PDF Local Copilot: Check Setup**, then open `paper.tex` and run **Open Paper**.
+6. Run **Paper Copilot: Check Setup**, then open `paper.tex` and run **Open Paper**.
 
 VS Code manages the local connection to WSL. TeXpresso communicates with the
 backend through its local process streams, and the backend sends rendered frames
@@ -98,7 +98,7 @@ npm run install:mac -- /path/to/pdf-local-copilot-VERSION-darwin-arm64.vsix
 The command installs the same archive in desktop VS Code and the available Remote
 SSH server installation, verifies both installed versions, and keeps their settings
 and extension stores independent. Reload both windows after installation.
-**PDF Local Copilot: Check Setup** shows the version, backend host, and installation
+**Paper Copilot: Check Setup** shows the version, backend host, and installation
 path for the window in which it runs.
 
 ## Agent profiles and paths
