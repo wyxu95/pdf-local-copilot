@@ -579,6 +579,25 @@ import { restoreFrame } from '../src/frame-cache';
   }
   const chatInput = document.querySelector('#chat-input'), chatAgent = document.querySelector('#chat-agent');
   const chatModel = document.querySelector('#chat-model'), chatEffort = document.querySelector('#chat-effort');
+  const claudeCommandCard = make('section', 'claude-command');
+  claudeCommandCard.id = 'claude-command'; claudeCommandCard.hidden = true;
+  document.querySelector('#chat-error').after(claudeCommandCard);
+  function renderClaudeCommand(command) {
+    claudeCommandCard.replaceChildren(); claudeCommandCard.hidden = !command;
+    if (!command) return;
+    claudeCommandCard.append(make('strong', '', command.title), make('p', 'chat-message-text', command.text));
+    const invoke = (action, code) => send({ type: 'claudeCommandAction', action, code });
+    const controls = make('div', 'claude-command-controls');
+    claudeCommandCard.append(controls);
+    if (command.login === 'code') {
+      controls.append(action('Open Claude authorization', () => invoke('open'), 'primary'));
+      const form = make('form', 'claude-command-controls'), code = make('input', 'claude-auth-code'), submit = make('button', '', 'Submit Code');
+      code.type = 'password'; code.autocomplete = 'off'; code.setAttribute('aria-label', 'Claude authorization code'); code.placeholder = 'Authorization code'; code.required = true;
+      form.onsubmit = event => { event.preventDefault(); if (code.value.trim()) invoke('submit', code.value.trim()); code.value = ''; };
+      form.append(code, submit); claudeCommandCard.append(form);
+    }
+    controls.append(command.login ? action('Cancel', () => invoke('cancel')) : action('Dismiss', () => invoke('dismiss')));
+  }
   let chatDraftTimer;
   const selectedOptions = () => ({ model: chatModel.value, effort: chatEffort.value });
   function renderModelControls(options = {}) {
@@ -591,7 +610,12 @@ import { restoreFrame } from '../src/frame-cache';
     chatEffort.replaceChildren(option('', 'Default'), ...efforts.map(effort => option(effort, effort)));
     chatEffort.value = efforts.includes(options.effort) ? options.effort : '';
   }
-  function saveChatDraft() { clearTimeout(chatDraftTimer); send({ type: 'chatDraft', text: chatInput.value, agent: chatAgent.value, options: selectedOptions() }); }
+  function saveChatDraft(options) { clearTimeout(chatDraftTimer); send({ type: 'chatDraft', text: chatInput.value, agent: chatAgent.value, options }); }
+  function saveChatOptions() {
+    const options = selectedOptions();
+    state.chat.agentRunOptions[chatAgent.value] = options;
+    saveChatDraft(options);
+  }
   function updateChatControls() {
     const chat = state.chat, notes = chat?.queuedNotes || [], ready = !!chatInput.value.trim() || notes.length > 0;
     document.querySelector('#send-chat').disabled = !chat || !ready || !!state.draft?.pending;
@@ -663,9 +687,9 @@ import { restoreFrame } from '../src/frame-cache';
       row.append(make('span', '', task.text || `${task.count}  PDF Annotations`), action('×', () => send({ type: 'removeQueuedTurn', id: task.id }))); tasks.append(row);
     }
     if (document.activeElement !== chatInput) chatInput.value = chat.draft || '';
-    chatAgent.replaceChildren(...chat.agents.map(profile => { const option = document.createElement('option'); option.value = profile.id; option.textContent = profile.name; option.title = profile.claude_config_dir || profile.command; return option; }));
-    const addAgent = document.createElement('option'); addAgent.value = '__add_claude__'; addAgent.textContent = '＋ Add Claude Agent…'; chatAgent.append(addAgent);
-    chatAgent.value = chat.agent; renderModelControls(chat.runOptions); updateChatControls(); renderAnnotation();
+    chatAgent.replaceChildren(...chat.agents.map(profile => { const option = document.createElement('option'); option.value = profile.id; option.textContent = profile.name; option.title = [profile.command, profile.claude_config_dir || profile.codex_home].filter(Boolean).join('\n'); return option; }));
+    const addAgent = document.createElement('option'); addAgent.value = '__add_agent__'; addAgent.textContent = '＋ Add Agent…'; chatAgent.append(addAgent);
+    chatAgent.value = chat.agent; renderModelControls(chat.agentRunOptions[chat.agent]); updateChatControls(); renderAnnotation();
   }
   function sendChat(ids) {
     if (document.querySelector('#send-chat').disabled) return;
@@ -679,12 +703,12 @@ import { restoreFrame } from '../src/frame-cache';
   chatInput.onkeydown = event => {
     if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && !composing && event.keyCode !== 229) { event.preventDefault(); if (!event.repeat) sendChat(); }
   };
-  chatAgent.onchange = () => { if (chatAgent.value === '__add_claude__') { chatAgent.value = state.chat.agent; send({ type: 'addAgent' }); } else { renderModelControls(); saveChatDraft(); } };
+  chatAgent.onchange = () => { if (chatAgent.value === '__add_agent__') { chatAgent.value = state.chat.agent; send({ type: 'addAgent' }); } else { state.chat.agent = chatAgent.value; renderModelControls(state.chat.agentRunOptions[chatAgent.value]); saveChatDraft(); } };
   chatModel.onchange = () => {
-    if (chatModel.value === '__custom__') { chatModel.value = state.chat.runOptions?.model || ''; saveChatDraft(); send({ type: 'chooseModel' }); }
-    else { renderModelControls(selectedOptions()); saveChatDraft(); }
+    if (chatModel.value === '__custom__') { renderModelControls(state.chat.agentRunOptions[chatAgent.value]); saveChatDraft(); send({ type: 'chooseModel' }); }
+    else { renderModelControls(selectedOptions()); saveChatOptions(); }
   };
-  chatEffort.onchange = saveChatDraft;
+  chatEffort.onchange = saveChatOptions;
   document.querySelector('#send-chat').onclick = sendChat;
   document.querySelector('#new-session').onclick = () => { document.querySelector('#chat-error').hidden = true; send({ type: 'newSession' }); };
   document.querySelector('#resume-queue').onclick = () => send({ type: 'resumeQueue' });
@@ -749,6 +773,7 @@ import { restoreFrame } from '../src/frame-cache';
     else if (message.type === 'reviewError' && state.openReview?.id === message.id) { state.openReview.error = message.message; state.openReview.pending = false; renderAnnotation(); }
     else if (message.type === 'decisions') { for (const list of Object.values(state.markers)) for (const marker of list) { const edit = message.edits.find(e => e.id === marker.id); if (edit) marker.decision = edit.decision; } for (const record of state.rows.values()) if (record.frame) drawMarks(record); }
     else if (message.type === 'chatState') renderChat(message);
+    else if (message.type === 'claudeCommand') renderClaudeCommand(message.command);
     else if (message.type === 'sendSelectedNotes') sendChat(message.ids);
     else if (message.type === 'agentOutput') {
       const response = state.chat?.messages.find(item => item.id === message.id); if (!response) return;

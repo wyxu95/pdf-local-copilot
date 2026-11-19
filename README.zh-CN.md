@@ -111,7 +111,7 @@ PDF 右侧的修改气泡关联本轮要求：
 | `tasks/<id>/review.json` | 差异片段、审阅决定、来源批注和会话要求 |
 | `applications/` | 撤回记录，引用旧内容并校验当前文件哈希 |
 | `history/` | 自上次 commit 起的本地历史节点、文本差异和变动的二进制内容 |
-| `conversations/` | 聊天、待发送意见、排队任务和模型设置 |
+| `conversations/` | 聊天、待发送意见和排队任务 |
 | `archives/` | 旧版未应用提案的改动文件及未保存内容 |
 | `images/` | 批注区域截图 |
 | `build/` | 当前完整编译结果、SyncTeX 和编译缓存 |
@@ -122,23 +122,33 @@ PDF 右侧的修改气泡关联本轮要求：
 
 ## 代理、模型与思考强度
 
-默认 Codex、Claude Code 与自定义代理并列显示。右侧代理下方可选择模型和思考强度，也可通过 **Other Model…** 输入模型名。每轮发送时保存所选参数，运行期间可为下一轮调整；选择“默认”沿用 CLI 设置。
+默认 Codex、Claude Code 与自定义代理并列显示。右侧代理下方可选择模型和思考强度，也可通过 **Other Model…** 输入模型名。Paper Copilot 在自己的 VS Code 扩展存储中按代理记住选择，每轮通过 CLI 参数传入。选择 **Default** 时沿用 CLI 设置。
 
 Codex 模型选项读取本地模型缓存，Claude 模型选项包含常用别名与该配置目录中的模型。[Codex 参数说明](https://learn.chatgpt.com/docs/config-file/config-reference)，[Claude 参数说明](https://code.claude.com/docs/en/model-config)。
 
-默认 Claude Code 代理继承扩展宿主的环境，由 CLI 查找配置：未设置 `CLAUDE_CONFIG_DIR` 时使用 `~/.claude.json`，设置后使用 `$CLAUDE_CONFIG_DIR/.claude.json`。自定义代理也继承该环境，显式填写 `claude_config_dir` 时使用指定目录。选择 **＋ Add Claude Agent…**，填写名称与 `claude_config_dir`，例如 `uclaude` 和 `~/.claude-uni`。也可在用户设置中配置：
+从命令面板打开 **Paper Copilot: Agent Settings**。执行文件和配置路径都以工作区所在的主机为准。
+
+| 内置代理 | 执行文件 | 配置目录 |
+| --- | --- | --- |
+| Codex | `pdfLocal.codexPath` | `pdfLocal.codexConfigDir` 指向含有 `config.toml` 的目录，并为该代理设置 `CODEX_HOME`。 |
+| Claude Code | `pdfLocal.claudePath` | `pdfLocal.claudeConfigDir` 指向含有 `settings.json` 的目录，并为该代理设置 `CLAUDE_CONFIG_DIR`。 |
+
+目录留空时，CLI 沿用扩展宿主的环境。环境变量未设置时，Codex 使用 `~/.codex/config.toml`，Claude 使用 `~/.claude/settings.json` 和 `~/.claude.json`。**Paper Copilot: Check Setup** 会显示各代理解析出的执行文件和用户配置位置。
+
+聊天代理下拉框中的 **＋ Add Agent…** 可以选择 CLI 类型、填写名称，并指定执行文件与配置目录。也可以在 VS Code 用户设置或远程设置中编辑：
 
 ```json
 {
   "pdfLocal.agents": [
-    { "name": "uclaude", "type": "claude", "claude_config_dir": "~/.claude-uni" }
-  ],
-  "pdfLocal.codexPath": "codex",
-  "pdfLocal.claudePath": "claude"
+    { "name": "uclaude", "type": "claude", "command": "~/.local/bin/claude", "claude_config_dir": "~/.claude-uni" },
+    { "name": "work-codex", "type": "codex", "command": "codex", "codex_home": "~/.codex-work" }
+  ]
 }
 ```
 
-配置目录使用与终端一致的路径；Claude 的认证存储会区分符号链接路径与链接目标。自定义代理的可选 `command` 字段可指定可执行文件。账号配置在会话开始时固定，模型与思考强度可在后续轮次调整。
+自定义代理的执行文件留空时沿用同类型内置代理的执行文件，目录留空时由 CLI 根据环境查找配置。配置目录的路径写法应与终端一致，包括符号链接。更换账号或会话目录后，开始新的会话即可使用新配置。
+
+选中 Claude 代理后，在 Paper Chat 中发送 `/help`、`/status` 或 `/login`，结果会显示在聊天面板中。登录时打开 Claude 官方授权页面，然后把页面给出的验证码粘贴回登录卡片。CLI 在工作区所在主机上使用当前代理的配置。Claude 非交互模式支持的命令和技能也可以从聊天输入框发送。
 
 ## 实时渲染与完整构建
 

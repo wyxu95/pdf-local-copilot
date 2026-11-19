@@ -32,11 +32,16 @@ const until = async fn => { const deadline = Date.now() + 60000; while (Date.now
   await until(async () => { page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().includes('workbench')); return !!page; });
   await page.getByRole('treeitem', { name: /^main\.tex/ }).dblclick();
   await page.getByRole('button', { name: 'Paper Copilot: Open Paper', exact: true }).click();
-  const check = async () => {
+  const check = async (selectModel = false) => {
     let pdf, chat;
     await until(async () => { for (const frame of page.frames()) { if (await frame.locator('#paper .page-image').count().catch(() => 0)) pdf = frame; if (await frame.locator('body.chat-only #chat-agent').count().catch(() => 0)) chat = frame; } return !!pdf && !!chat; });
     await until(async () => await chat.locator('#chat-agent').inputValue() === 'custom:uclaude');
+    if (selectModel) {
+      await chat.locator('#chat-model').selectOption('opus');
+      await chat.locator('#chat-effort').selectOption('xhigh');
+    }
     assert.equal(await chat.locator('#chat-model').inputValue(), 'opus');
+    assert.equal(await chat.locator('#chat-effort').inputValue(), 'xhigh');
     assert.equal(JSON.parse(await fs.readFile(conversationFile, 'utf8')).id, session);
     assert.equal(await page.getByRole('tab', { name: /^Paper · main\.tex/ }).count(), 1);
     assert.equal(await page.getByRole('tab', { name: /Paper Chat.*main\.tex/ }).count(), 1);
@@ -50,7 +55,7 @@ const until = async fn => { const deadline = Date.now() + 60000; while (Date.now
     assert.equal(await pdf.locator('.note-marker[data-note-id="reload-macro"]').count(), 1);
     assert.equal(await pdf.locator('.note-marker[data-note-id="reload-removed"]').count(), 0);
   };
-  await check();
+  await check(true);
   await page.getByRole('button', { name: 'Open Quick Access', exact: true }).click();
   await page.locator('.quick-input-widget input').fill('>Developer: Reload Window');
   await page.locator('.quick-input-widget:visible .monaco-list-row').filter({ hasText: 'Developer: Reload Window' }).first().click();

@@ -5,13 +5,14 @@ import { randomUUID, createHash } from 'node:crypto';
 import { LivePreview, type PagePoint } from './live';
 import type { Frame, FrameHeader } from './protocol';
 import { type Task, changes, inside, WorkingTree } from './project';
-import { type Note, type Agent, runAgent } from './agent';
+import { type Note, type Agent, isClaudeSlashCommand, runAgent } from './agent';
+import { claudeAuthStatus, startClaudeLogin } from './claude-commands';
 import { type Review, type Edit, type Decision, type ReviewRequest, makeReview, materialize, reviewPlan, decide, editPosition, loadReview, saveReview, mapLine, associateReview, resolvedNoteIds } from './review';
 import { BuildManager, engineFor, parseProblems, type BuildStep, type TexEngine } from './build';
 import { trackNotes, quoteGeometry, nearbyGeometry, regionGeometry, locateAnnotation } from './anchors';
 import { applyWithUndo, undoApplication, recordWorkspace } from './history';
 import { ConversationStore, type QueuedTurn } from './conversation';
-import { configuredAgents, type CustomAgent, type AgentProfile } from './agents';
+import { agentsFromSettings, type CustomAgent, type AgentKind, type AgentProfile } from './agents';
 import { nearestTextPoint, textContext } from './view-geometry';
 import { refineSourceLocation } from './source-location';
 import { modelCatalog, runOptions, type ModelCatalog, type RunOptions } from './models';
@@ -29,6 +30,7 @@ interface UI {
   reviewBase: ReviewBase;
   refresh(): void; activate(paper: Paper): void; report(error: unknown): void; closed(paper: Paper): void;
 }
+interface ClaudeCommandView { title: string; text: string; login?: 'starting' | 'code' | 'verifying' }
 interface Marker { id: string; page: number; rects: number[][]; decision: Decision; label: string; originLabel?: string; unresolved?: boolean; bounds?: number[] }
 const inputFile = (file: string) => /\.(tex|bib|sty|cls|bst|bbx|cbx|png|jpe?g|pdf|svg|eps|csv|[cm]?js|jsx|tsx?|py|c|h|cpp|hpp|rs|java|go|txt)$/i.test(file) || path.basename(file) === '.latexmkrc';
 
@@ -61,6 +63,8 @@ export class Paper {
   private markerVersions = new Map<string, string>();
   localHistory?: LocalHistory;
   private conversation: ConversationStore;
+  private claudeCommand?: ClaudeCommandView;
+  private claudeLogin?: { run: ReturnType<typeof startClaudeLogin>; url?: URL };
   private catalogs: Record<string, ModelCatalog> = {};
   private workingTree?: WorkingTree;
   private processingQueue = false; private draining?: Promise<void>;
@@ -120,18 +124,26 @@ export class Paper {
         }); return;
       }
       if (m.type === 'chatSend') { void this.sendChat(m.instruction, m.agent, m.ids, m.options).catch(e => this.both({ type: 'chatError', message: e instanceof Error ? e.message : String(e) })); return; }
+      if (m.type === 'claudeCommandAction' && panel === this.chatPanel) {
+        void this.claudeCommandAction(m.action, m.code).catch(e => this.both({ type: 'chatError', message: e instanceof Error ? e.message : String(e) })); return;
+      }
       if (m.type === 'chatDraft' && typeof m.text === 'string') {
         try {
-          this.conversation.value.draft = m.text.slice(0, 50000);
-          if (!this.chatState().lockedAgent && this.agentProfiles().some(profile => profile.id === m.agent)) this.conversation.value.agent = m.agent;
-          this.conversation.value.runOptions = runOptions(m.options, this.agentProfile(this.conversation.value.agent).type);
-          void this.conversation.save();
+          const conversation = this.conversation.value;
+          conversation.draft = m.text.slice(0, 50000);
+          if (m.agent !== conversation.agent && !this.chatState().lockedAgent && this.agentProfiles().some(profile => profile.id === m.agent)) {
+            conversation.agent = m.agent; conversation.runOptions = undefined;
+          }
+          if (m.options !== undefined && m.agent === conversation.agent) {
+            void this.saveAgentRunOptions(this.agentProfile(conversation.agent), m.options).catch(this.ui.report);
+          }
+          void this.conversation.save().catch(this.ui.report);
         } catch (e) { this.both({ type: 'chatError', message: String(e) }); }
         return;
       }
       if (m.type === 'chooseModel') { void this.chooseModel().catch(this.ui.report); return; }
       if (m.type === 'showLogs') { this.ui.output.show(true); return; }
-      if (m.type === 'addAgent') { void this.addClaudeAgent().catch(this.ui.report); return; }
+      if (m.type === 'addAgent') { void this.addAgent().catch(this.ui.report); return; }
       if (m.type === 'stopQueue') { void this.stopAgent().catch(this.ui.report); return; }
       if (m.type === 'resumeQueue') { this.conversation.value.paused = false; this.startQueue(); return; }
       if (m.type === 'removeQueuedTurn' && typeof m.id === 'string') { this.conversation.value.queue = this.conversation.value.queue.filter(turn => turn.id !== m.id); void this.saveConversation(); return; }
@@ -176,7 +188,7 @@ export class Paper {
   private syncPanel(panel: vscode.WebviewPanel, side: string, forceImage = false) {
     const chatOnly = panel === this.chatPanel;
     this.post(panel, { type: 'init', root: this.root, main: this.main, page: this.page, side, tool: this.tool, zoom: this.zoomLevel, hasTask: !!this.task, notes: this.notes, difference: this.difference, markers: this.markers, chatVisible: chatOnly, chatOnly });
-    if (chatOnly) { this.chatReady = true; this.post(panel, { type: 'chatState', ...this.chatState() }); this.flushChatActions(); return; }
+    if (chatOnly) { this.chatReady = true; this.post(panel, { type: 'chatState', ...this.chatState() }); this.post(panel, { type: 'claudeCommand', command: this.claudeCommand }); this.flushChatActions(); return; }
     for (const [s, preview] of [['before', this.before], ['after', this.after]] as const) if (preview?.lastFrame) {
       this.post(panel, { type: 'previewState', side: s, session: this.previewSessions[s], ...preview.snapshot() });
       this.postFrame(panel, 'frame', s, this.previewSessions[s], preview.lastFrame, forceImage);
@@ -584,7 +596,7 @@ export class Paper {
     const note = this.notes.find(note => note.id === id); if (!note) return;
     const conversation = this.conversation.value;
     if ([...(conversation.activeTurn ? [conversation.activeTurn] : []), ...conversation.queue].some(turn => turn.notes.some(sent => sent.id === id && sent.comment === note.comment))) return;
-    await this.showChatForAction(true); await this.sendChat('', conversation.agent, [id], conversation.runOptions);
+    await this.showChatForAction(true); await this.sendChat('', conversation.agent, [id]);
   }
   selectNote(id: string, checked: boolean) { checked ? this.selectedNotes.add(id) : this.selectedNotes.delete(id); if (checked && !this.chatPanel) void this.showChatForAction(true).catch(this.ui.report); this.conversation.value.selectedNotes = [...this.selectedNotes]; void this.saveConversation().catch(this.ui.report); this.ui.refresh(); }
   selectReviewEdits(id: string, selected: boolean, wholeFile = false) {
@@ -656,9 +668,10 @@ export class Paper {
     await this.showPage(note.page); this.post(panel, { type: 'reveal', page: note.page, rect: note.rects[0], noteId: note.id });
   }
   private chatState() {
-    const conversation = this.conversation.value;
+    const conversation = this.conversation.value, agents = this.agentProfiles();
     return {
-      agents: this.agentProfiles(), agentName: this.agentProfile(conversation.agent).name, catalogs: this.catalogs, runOptions: conversation.runOptions || {},
+      agents, agentName: this.agentProfile(conversation.agent).name, catalogs: this.catalogs,
+      agentRunOptions: Object.fromEntries(agents.map(profile => [profile.id, this.agentRunOptions(profile.id)])),
       messages: conversation.messages, queuedNotes: [...this.selectedNotes].map(id => this.notes.find(n => n.id === id)).filter((n): n is Note => !!n).map(n => ({ id: n.id, page: n.page, comment: n.comment })),
       tasks: conversation.queue.map(turn => ({ id: turn.id, text: turn.instruction, count: turn.notes.length })),
       active: conversation.activeTurn?.id, busy: this.queueActive, paused: conversation.paused, draft: conversation.draft, agent: conversation.agent,
@@ -669,38 +682,127 @@ export class Paper {
   }
   private agentProfiles() {
     const config = vscode.workspace.getConfiguration('pdfLocal', vscode.Uri.file(this.main));
-    const profiles = configuredAgents(config.get<CustomAgent[]>('agents', []), { codex: config.get<string>('codexPath', 'codex'), claude: config.get<string>('claudePath', 'claude') });
+    const profiles = agentsFromSettings(config);
     const bound = this.conversation.value.agentProfile;
-    return bound ? [bound, ...profiles.filter(profile => profile.id !== bound.id)] : profiles;
+    return bound?.id.startsWith('custom:') ? [bound, ...profiles.filter(profile => profile.id !== bound.id)] : profiles;
   }
   private agentProfile(id: string): AgentProfile { return this.agentProfiles().find(profile => profile.id === id) || this.agentProfiles()[0]; }
   private async loadModels() { this.catalogs = Object.fromEntries(await Promise.all(this.agentProfiles().map(async profile => [profile.id, await modelCatalog(profile)]))); }
-  private async chooseModel() {
-    const model = await vscode.window.showInputBox({ title: 'Model Name', prompt: 'Enter a model name or alias supported by the local CLI', value: this.conversation.value.runOptions?.model || '' });
-    if (model === undefined) return;
-    this.conversation.value.runOptions = runOptions({ ...this.conversation.value.runOptions, model }, this.agentProfile(this.conversation.value.agent).type); await this.saveConversation();
+  private agentRunOptions(id: Agent): RunOptions {
+    const conversation = this.conversation.value;
+    return this.context.globalState.get<RunOptions>(`agentRunOptions:${id}`)
+      ?? (id === conversation.agent ? conversation.runOptions : undefined) ?? {};
   }
-  async addClaudeAgent() {
-    const name = await vscode.window.showInputBox({ title: 'Add Claude Agent', prompt: 'Agent display name', placeHolder: 'For example, uclaude', validateInput: value => !value.trim() ? 'Enter a name' : this.agentProfiles().some(profile => profile.name.toLowerCase() === value.trim().toLowerCase()) ? 'This name already exists' : undefined });
+  private async saveAgentRunOptions(profile: AgentProfile, value: unknown) {
+    await this.context.globalState.update(`agentRunOptions:${profile.id}`, runOptions(value, profile.type));
+  }
+  private async chooseModel() {
+    const profile = this.agentProfile(this.conversation.value.agent), options = this.agentRunOptions(profile.id);
+    const model = await vscode.window.showInputBox({ title: 'Model Name', prompt: 'Enter a model name or alias supported by the local CLI', value: options.model || '' });
+    if (model === undefined) return;
+    await this.saveAgentRunOptions(profile, { ...options, model });
+    this.both({ type: 'chatState', ...this.chatState() });
+  }
+  async addAgent(type?: AgentKind) {
+    const profiles = this.agentProfiles(), builtIns = profiles.filter(profile => profile.id === profile.type);
+    const builtIn = type ? builtIns.find(profile => profile.type === type)
+      : (await vscode.window.showQuickPick(builtIns.map(profile => ({ label: profile.name, profile })), { title: 'Agent Type' }))?.profile;
+    if (!builtIn) return;
+    const kind = builtIn.type;
+    const name = await vscode.window.showInputBox({ title: 'Add Agent', prompt: 'Agent display name', placeHolder: kind === 'claude' ? 'For example, uclaude' : 'For example, work-codex', validateInput: value => !value.trim() ? 'Enter a name' : profiles.some(profile => profile.name.toLowerCase() === value.trim().toLowerCase()) ? 'This name already exists' : undefined });
     if (!name) return;
-    const directory = await vscode.window.showInputBox({ title: `Configure ${name.trim()}`, prompt: 'claude_config_dir: the Claude configuration directory for this agent', placeHolder: 'For example, ~/.claude-uni', validateInput: value => value.trim() ? undefined : 'Enter a configuration directory' });
-    if (!directory) return;
+    const command = await vscode.window.showInputBox({ title: 'Agent Executable', prompt: 'Executable path or command name on the workspace host. Leave blank to use the built-in agent executable.', placeHolder: builtIn.command });
+    if (command === undefined) return;
+    const directory = await vscode.window.showInputBox({ title: 'Agent Configuration Directory',
+      prompt: kind === 'claude' ? 'Folder containing settings.json (CLAUDE_CONFIG_DIR). Leave blank to use the CLI environment.' : 'Folder containing config.toml (CODEX_HOME). Leave blank to use the CLI environment.',
+      placeHolder: kind === 'claude' ? 'For example, ~/.claude-uni' : 'For example, ~/.codex-work' });
+    if (directory === undefined) return;
     const config = vscode.workspace.getConfiguration('pdfLocal'), agents = config.get<CustomAgent[]>('agents', []);
-    await config.update('agents', [...agents, { name: name.trim(), type: 'claude', claude_config_dir: directory.trim() }], vscode.ConfigurationTarget.Global);
-    if (!this.chatState().lockedAgent) { this.conversation.value.agent = `custom:${name.trim()}`; this.conversation.value.runOptions = {}; }
+    const agent: CustomAgent = { name: name.trim(), type: kind };
+    if (command.trim()) agent.command = command.trim();
+    if (directory.trim()) agent[kind === 'claude' ? 'claude_config_dir' : 'codex_home'] = directory.trim();
+    await config.update('agents', [...agents, agent], vscode.ConfigurationTarget.Global);
+    if (!this.chatState().lockedAgent) { this.conversation.value.agent = `custom:${agent.name}`; this.conversation.value.runOptions = undefined; }
     await this.loadModels();
     await this.saveConversation();
   }
   private async saveConversation() { this.both({ type: 'chatState', ...this.chatState() }); await this.conversation.save(); }
+  private showClaudeCommand(command?: ClaudeCommandView) {
+    this.claudeCommand = command;
+    this.post(this.chatPanel, { type: 'claudeCommand', command });
+  }
+  private async runClaudeCommand(command: string, profile: AgentProfile) {
+    if (this.claudeLogin) {
+      if (command === '/login') return;
+      throw new Error('Finish or cancel Claude sign-in first.');
+    }
+    const title = `${profile.name} · ${command === '/claude' ? '/help' : command}`;
+    if (command === '/help' || command === '/claude') {
+      this.showClaudeCommand({ title, text: '/login — Sign in with Claude.\n/status — Show this profile’s authentication and configuration.\n/help — Show this list.\n\nClaude commands and skills supported in print mode can also be sent from Paper Chat.' });
+      return;
+    }
+    if (command === '/status') {
+      const pending = { title, text: 'Checking Claude Code…' };
+      this.showClaudeCommand(pending);
+      try {
+        const status = await claudeAuthStatus(profile, this.root);
+        if (this.claudeCommand !== pending) return;
+        const account = status.loggedIn ? `Signed in${status.authMethod ? ' (' + status.authMethod + ')' : ''}.` : 'Signed out. Send /login to sign in.';
+        const directory = status.configDirectory || profile.claude_config_dir;
+        this.showClaudeCommand({ title, text: [account, `Executable: ${profile.command}`, directory && `Configuration: ${directory}`].filter(Boolean).join('\n') });
+      } catch (error) {
+        if (this.claudeCommand === pending) this.showClaudeCommand({ title, text: (error as Error).message });
+      }
+      return;
+    }
+    this.showClaudeCommand({ title, text: 'Starting Claude sign-in…', login: 'starting' });
+    const run = startClaudeLogin(profile, this.root, url => {
+      if (this.claudeLogin !== login || login.url) return;
+      login.url = url;
+      this.showClaudeCommand({ title, text: 'Open the Claude authorization page, then paste the code it gives you here.', login: 'code' });
+    });
+    const login: NonNullable<Paper['claudeLogin']> = { run };
+    this.claudeLogin = login;
+    const ok = await run.done;
+    if (this.claudeLogin !== login) return;
+    this.claudeLogin = undefined;
+    this.showClaudeCommand({ title, text: ok ? 'Claude sign-in completed.' : 'Claude sign-in failed. Send /login to try again.' });
+  }
+  private async claudeCommandAction(action: unknown, code: unknown) {
+    const login = this.claudeLogin, command = this.claudeCommand;
+    if (action === 'dismiss' && !login) this.showClaudeCommand();
+    if (!login || !command) return;
+    if (action === 'cancel') {
+      this.claudeLogin = undefined;
+      this.showClaudeCommand({ title: command.title, text: 'Claude sign-in cancelled.' });
+      await login.run.stop();
+    } else if (action === 'open' && login.url) {
+      if (!await vscode.env.openExternal(vscode.Uri.parse(login.url.href))) throw new Error('Could not open the Claude authorization page.');
+    } else if (action === 'submit' && command.login === 'code') {
+      if (typeof code !== 'string' || !code.trim() || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) throw new Error('Paste the authorization code from Claude.');
+      this.showClaudeCommand({ title: command.title, text: 'Verifying the authorization code…', login: 'verifying' });
+      login.run.sendCode(code.trim());
+    }
+  }
   private async sendChat(instruction: unknown, agent: unknown, ids: unknown, options?: unknown) {
     if (typeof instruction !== 'string' || instruction.length > 50000 || !Array.isArray(ids) || !ids.every(id => typeof id === 'string') || !this.agentProfiles().some(profile => profile.id === agent)) throw new Error('Invalid task content.');
-    const conversation = this.conversation.value, chosen = agent as Agent;
+    const conversation = this.conversation.value, chosen = agent as Agent, profile = this.agentProfile(chosen);
     if (this.chatState().lockedAgent && chosen !== conversation.agent) throw new Error('The agent is bound to this conversation. Start a new session to switch agents.');
-    const notes = [...new Set(ids)].map(id => this.notes.find(note => note.id === id)).filter((note): note is Note => !!note);
-    if (!instruction.trim() && !notes.length) throw new Error('Enter a revision request or select PDF annotations to send.');
-    conversation.agent = chosen; conversation.agentProfile ??= structuredClone(this.agentProfile(chosen)); await this.context.workspaceState.update('lastAgent', chosen);
-    const selectedOptions = runOptions(options, this.agentProfile(chosen).type); conversation.runOptions = selectedOptions;
-    const turn: QueuedTurn = { id: randomUUID(), assistantId: randomUUID(), agent: chosen, instruction: instruction.trim(), notes: structuredClone(notes), options: structuredClone(selectedOptions) };
+    const command = instruction.trim();
+    if (['/login', '/help', '/status', '/claude'].includes(command)) {
+      if (profile.type !== 'claude') throw new Error('Select a Claude agent to use this command.');
+      this.both({ type: 'chatSent', instruction });
+      if (conversation.draft === instruction) { conversation.draft = ''; void this.conversation.save().catch(this.ui.report); }
+      await this.runClaudeCommand(command, profile);
+      return;
+    }
+    const slash = profile.type === 'claude' && isClaudeSlashCommand(command);
+    const notes = slash ? [] : [...new Set(ids)].map(id => this.notes.find(note => note.id === id)).filter((note): note is Note => !!note);
+    if (!command && !notes.length) throw new Error('Enter a revision request or select PDF annotations to send.');
+    const selectedOptions = runOptions(options ?? this.agentRunOptions(chosen), profile.type);
+    if (conversation.agent !== chosen) conversation.runOptions = undefined;
+    conversation.agent = chosen; conversation.agentProfile ??= structuredClone(profile); await this.context.workspaceState.update('lastAgent', chosen);
+    const turn: QueuedTurn = { id: randomUUID(), assistantId: randomUUID(), agent: chosen, instruction: command, notes: structuredClone(notes), options: structuredClone(selectedOptions) };
     conversation.queue.push(turn);
     conversation.messages.push({ id: turn.id, role: 'user', text: turn.instruction || 'Revise the paper using these PDF annotations.', notes: notes.map(n => ({ id: n.id, page: n.page, comment: n.comment })), status: 'queued' });
     for (const note of notes) this.selectedNotes.delete(note.id); conversation.selectedNotes = [...this.selectedNotes];
@@ -754,7 +856,9 @@ export class Paper {
       const reason = this.newSessionBlock(); if (reason) throw new Error(reason);
       if (this.task) await this.finishTask();
       const options = this.conversation.value.runOptions;
-      await this.conversation.reset(this.conversation.value.agent); this.conversation.value.runOptions = options; this.selectedNotes.clear(); await this.saveConversation(); this.ui.refresh();
+      await this.conversation.reset(this.conversation.value.agent);
+      this.conversation.value.runOptions = options; this.selectedNotes.clear();
+      await this.loadModels(); await this.saveConversation(); this.ui.refresh();
       if (!this.agentProfiles().some(profile => profile.id === this.conversation.value.agent)) { this.conversation.value.agent = this.agentProfiles()[0].id; await this.saveConversation(); }
     })().finally(() => { this.startingSession = undefined; });
   }
@@ -825,7 +929,9 @@ export class Paper {
         this.showProposal(true); this.both({ type: 'hasTask', value: true }); this.ui.refresh();
         const feedback = this.review?.files.flatMap(f => f.edits.filter(e => e.decision !== 'pending').map(e => `${e.decision}: ${f.file}:${e.beforeLine} ${JSON.stringify(e.removed)} -> ${JSON.stringify(e.inserted)}`)).join('\n') || '';
         this.log(`\n=== ${agent.label} · ${this.task.id} · ${images.length} images ===\n`);
-        this.run = runAgent(agent.value, profile.command, this.task, selected, `${instruction}\n\nCurrent manuscript updates:\n${this.conversation.value.contextUpdates.join('\n')}\n\nAuthor's prior review decisions:\n${feedback}`, s => this.log(s), images, assistant, profile, options);
+        const agentInstruction = profile.type === 'claude' && isClaudeSlashCommand(instruction) ? instruction
+          : `${instruction}\n\nCurrent manuscript updates:\n${this.conversation.value.contextUpdates.join('\n')}\n\nAuthor's prior review decisions:\n${feedback}`;
+        this.run = runAgent(agent.value, profile.command, this.task, selected, agentInstruction, s => this.log(s), images, assistant, profile, options);
         progress.report({ message: 'Reading annotations and screenshots, and editing source files.' }); await this.run.done; succeeded = true;
         this.conversation.value.task = this.task; this.conversation.value.contextUpdates = []; await this.saveConversation();
         await this.context.workspaceState.update(this.key, this.task);
@@ -1143,6 +1249,7 @@ export class Paper {
     if (closePanels) { this.proposalPanel?.dispose(); this.chatPanel?.dispose(); }
     this.threads.forEach(t => t.dispose()); this.resources.forEach(r => r.dispose());
     if (this.queueActive || this.conversation.value.queue.length) this.conversation.value.paused = true;
-    await this.run?.stop(); await this.workingTree?.capture(); await Promise.all([this.before?.stop(), this.after?.stop(), this.beforeBuild?.stop(), this.afterBuild?.stop()]); await this.draining; await this.conversation.save(); this.ui.closed(this);
+    const login = this.claudeLogin; this.claudeLogin = undefined;
+    await Promise.all([this.run?.stop(), login?.run.stop()]); await this.workingTree?.capture(); await Promise.all([this.before?.stop(), this.after?.stop(), this.beforeBuild?.stop(), this.afterBuild?.stop()]); await this.draining; await this.conversation.save(); this.ui.closed(this);
   }
 }

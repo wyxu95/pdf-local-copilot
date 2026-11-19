@@ -12,6 +12,17 @@ test('default Claude environment overrides only requested effort and leaves conf
   assert.equal(agentEnvironment('claude', '~/.claude-uni').CLAUDE_CONFIG_DIR, path.join(os.homedir(), '.claude-uni'));
 });
 
+test('Codex model suggestions and CLI environment use the selected profile directory', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-codex-models-'));
+  try {
+    await fs.writeFile(path.join(dir, 'models_cache.json'), JSON.stringify({ models: [{ visibility: 'list', slug: 'profile-model' }] }));
+    const catalog = await modelCatalog({ id: 'codex', name: 'Codex', type: 'codex', command: 'codex', codex_home: dir });
+    assert.deepEqual(catalog.models.map(model => model.value), ['profile-model']);
+    assert.deepEqual(agentEnvironment('codex', dir), { CODEX_HOME: dir });
+    assert.deepEqual(agentEnvironment('codex'), {});
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
 test('model and effort overrides reach both new and resumed CLI sessions', () => {
   for (const session of [undefined, '11111111-1111-4111-8111-111111111111']) {
     const options = { model: 'selected-model', effort: 'high' };

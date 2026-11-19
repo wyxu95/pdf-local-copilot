@@ -12,6 +12,8 @@ import { HistoryFiles } from './history-files';
 import type { HistoryPoint, HistoryChange } from './local-history';
 import { displayHistoryLabel } from './history-label';
 import { inspectTools } from './setup';
+import { agentsFromSettings, claudeConfigDir, codexConfigDir } from './agents';
+import { agentEnvironment } from './agent';
 
 let output: vscode.OutputChannel, status: vscode.StatusBarItem;
 let diagnostics: vscode.DiagnosticCollection, active: Paper | undefined;
@@ -38,16 +40,21 @@ export function activate(context: vscode.ExtensionContext) {
     setupOutput.appendLine(`Version: ${context.extension.packageJSON.version}\nBackend: ${process.platform}-${process.arch}\nConnection: ${vscode.env.remoteName || 'local'}\nExtension: ${context.extensionPath}`);
     if (process.platform === 'win32') { setupOutput.appendLine('Open a WSL or Remote SSH window and install the VSIX matching that host. TeXpresso and the agent CLIs run on the workspace host.'); return; }
     const configuration = vscode.workspace.getConfiguration('pdfLocal');
+    const agents = agentsFromSettings(configuration);
     const tools = await inspectTools([
       { name: 'TeXpresso', command: configuration.get<string>('texpressoPath') || path.join(context.extensionPath, 'native', 'texpresso'), args: ['-capabilities'] },
       { name: 'latexmk', command: 'latexmk', args: ['-v'] },
       { name: 'SyncTeX', command: 'synctex', args: ['--version'] },
       { name: 'TeX Live', command: 'kpsewhich', args: ['--version'] },
       { name: 'Git', command: 'git', args: ['--version'] },
-      { name: 'Codex', command: configuration.get<string>('codexPath') || 'codex', args: ['--version'] },
-      { name: 'Claude', command: configuration.get<string>('claudePath') || 'claude', args: ['--version'] }
+      ...agents.map(profile => ({ name: profile.name, command: profile.command, args: ['--version'],
+        env: agentEnvironment(profile.type, profile.type === 'claude' ? profile.claude_config_dir : profile.codex_home) }))
     ]);
     for (const tool of tools) setupOutput.appendLine(`\n${tool.ok ? 'OK' : 'MISSING'} ${tool.name}: ${tool.command}\n${tool.detail}`);
+    for (const profile of agents) {
+      const settings = profile.type === 'claude' ? path.join(claudeConfigDir(profile.claude_config_dir), 'settings.json') : path.join(codexConfigDir(profile.codex_home), 'config.toml');
+      setupOutput.appendLine(`${profile.name} user settings: ${settings}`);
+    }
     setupOutput.appendLine('\nChoose Codex or Claude; only your selected agent is required. Install and authenticate tools on this backend host. Agent config directories and command paths also belong to this host.');
   });
   let routing = Promise.resolve();
@@ -132,7 +139,9 @@ export function activate(context: vscode.ExtensionContext) {
   register('refreshHistory', () => active?.refreshHistory());
   register('historyDiff', (item?: HistoryItem) => item?.change && item.paper.showLocalHistory(item.point, item.change.file));
   register('newSession', () => active?.newSession());
-  register('addClaudeAgent', () => active?.addClaudeAgent());
+  register('addClaudeAgent', () => active?.addAgent('claude'));
+  register('addAgent', () => active?.addAgent());
+  register('agentSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:local-paper-tools.pdf-local-copilot agent'));
   register('manuscript', () => active?.showManuscript()); register('proposal', () => active?.showProposal());
   register('acceptEdit', (item?: ReviewItem & { reviewId?: string }) => (item?.paper || active)?.setDecision(item?.edit?.id || item?.reviewId || active?.selectedEdit || '', 'accepted'));
   register('rejectEdit', (item?: ReviewItem & { reviewId?: string }) => (item?.paper || active)?.setDecision(item?.edit?.id || item?.reviewId || active?.selectedEdit || '', 'rejected'));

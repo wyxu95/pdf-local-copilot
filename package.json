@@ -2,7 +2,7 @@
   "name": "pdf-local-copilot",
   "displayName": "Paper Copilot",
   "description": "Annotate your paper, revise with local Codex or Claude, and review live TeXpresso previews.",
-  "version": "0.8.6",
+  "version": "0.8.10",
   "publisher": "local-paper-tools",
   "license": "MIT",
   "engines": {
@@ -201,6 +201,16 @@
         "title": "Paper Copilot: Add Claude Agent",
         "icon": "$(add)",
         "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.addAgent",
+        "title": "Paper Copilot: Add Agent",
+        "icon": "$(add)",
+        "enablement": "pdfLocal.hasPaper"
+      },
+      {
+        "command": "pdfLocal.agentSettings",
+        "title": "Paper Copilot: Agent Settings"
       },
       {
         "command": "pdfLocal.pdfPosition",
@@ -525,13 +535,25 @@
           "type": "string",
           "default": "codex",
           "scope": "machine",
-          "description": "Local Codex executable path."
+          "description": "Executable path or command name for the built-in Codex agent on the workspace host."
+        },
+        "pdfLocal.codexConfigDir": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Folder containing `config.toml` for the built-in Codex agent. A value sets `CODEX_HOME` for this agent. Leave blank to inherit the CLI environment."
         },
         "pdfLocal.claudePath": {
           "type": "string",
           "default": "claude",
           "scope": "machine",
-          "description": "Local Claude Code executable path."
+          "description": "Executable path or command name for the built-in Claude Code agent on the workspace host."
+        },
+        "pdfLocal.claudeConfigDir": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Folder containing `settings.json` for the built-in Claude Code agent. A value sets `CLAUDE_CONFIG_DIR` for this agent. Leave blank to inherit the CLI environment."
         },
         "pdfLocal.buildSteps": {
           "type": "array",
@@ -561,7 +583,7 @@
           "type": "array",
           "default": [],
           "scope": "machine",
-          "description": "Custom agents. Claude profiles can use a separate claude_config_dir; each agent retains its own session.",
+          "description": "Custom agent profiles with their own executable and configuration directory. Create profiles with Paper Copilot: Add Agent, or edit them in settings.json.",
           "items": {
             "type": "object",
             "required": [
@@ -583,10 +605,16 @@
                 ]
               },
               "command": {
-                "type": "string"
+                "type": "string",
+                "description": "Executable path or command name. Leave blank to use the built-in executable for this agent type."
               },
               "claude_config_dir": {
-                "type": "string"
+                "type": "string",
+                "description": "Claude profile folder containing settings.json. Sets CLAUDE_CONFIG_DIR for this agent."
+              },
+              "codex_home": {
+                "type": "string",
+                "description": "Codex profile folder containing config.toml. Sets CODEX_HOME for this agent."
               }
             }
           }

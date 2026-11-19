@@ -24,3 +24,11 @@ test('configuration directories expand home syntax without shell evaluation', ()
   assert.equal(claudeConfigDir('${HOME}/other-profile'), path.join(os.homedir(), 'other-profile'));
   assert.throws(() => configuredAgents([{ name: 'Claude Code', type: 'claude' }]), /Duplicate/);
 });
+test('Codex profiles use their own executables and directories', () => {
+  const [codex, claude, work] = configuredAgents([{ name: 'work-codex', type: 'codex', command: '~/.local/bin/work-codex', codex_home: '$HOME/.codex-work' }],
+    { codex: '/bin/codex', claude: 'claude' }, { codex_home: '/tmp/codex', claude_config_dir: '~/.claude' });
+  assert.equal(codex.codex_home, '/tmp/codex');
+  assert.equal(claude.claude_config_dir, path.join(os.homedir(), '.claude'));
+  assert.equal(work.command, path.join(os.homedir(), '.local/bin/work-codex'));
+  assert.equal(work.codex_home, path.join(os.homedir(), '.codex-work'));
+});

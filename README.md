@@ -141,9 +141,18 @@ used by each window.
 
 ## Agents, models, and profiles
 
-Use the agent selector below the conversation, then choose a model and reasoning effort. **Other model** accepts a CLI-supported model name. Codex suggestions come from its local model cache; Claude suggestions include aliases and models from the selected profile. The CLI remains responsible for model availability and authentication.
+Use the agent selector below the conversation, then choose a model and reasoning effort. Paper Copilot remembers those choices per agent in its VS Code extension storage and passes them as CLI options for each turn. **Default** uses the CLI's configuration. **Other Model…** accepts a CLI-supported model name. Codex suggestions come from its local model cache, and Claude suggestions include aliases and models from the selected profile.
 
-The default Claude Code agent inherits the extension host's environment and lets the CLI locate its configuration: `~/.claude.json` when `CLAUDE_CONFIG_DIR` is unset, or `$CLAUDE_CONFIG_DIR/.claude.json` when it is set. Named agents inherit the same environment unless they have an explicit `claude_config_dir`. For example, create `uclaude` with `~/.claude-uni` through **＋ Add Claude Agent…**, or configure:
+Open **Paper Copilot: Agent Settings** from the Command Palette. All executable and configuration paths refer to the workspace host.
+
+| Built-in agent | Executable setting | Configuration directory setting |
+| --- | --- | --- |
+| Codex | `pdfLocal.codexPath` | `pdfLocal.codexConfigDir` sets `CODEX_HOME` for the directory containing `config.toml`. |
+| Claude Code | `pdfLocal.claudePath` | `pdfLocal.claudeConfigDir` sets `CLAUDE_CONFIG_DIR` for the directory containing `settings.json`. |
+
+Blank configuration directories let the CLIs use the extension host's environment. Without environment overrides, Codex uses `~/.codex/config.toml` and Claude uses `~/.claude/settings.json` and `~/.claude.json`. **Paper Copilot: Check Setup** shows the executable and user settings path resolved for each configured agent.
+
+Choose **＋ Add Agent…** in the conversation to select a CLI type, name, optional executable, and optional configuration directory. Profiles can also be edited in VS Code's user or remote settings:
 
 ```json
 {
@@ -151,15 +160,22 @@ The default Claude Code agent inherits the extension host's environment and lets
     {
       "name": "uclaude",
       "type": "claude",
+      "command": "~/.local/bin/claude",
       "claude_config_dir": "~/.claude-uni"
+    },
+    {
+      "name": "work-codex",
+      "type": "codex",
+      "command": "codex",
+      "codex_home": "~/.codex-work"
     }
-  ],
-  "pdfLocal.codexPath": "codex",
-  "pdfLocal.claudePath": "claude"
+  ]
 }
 ```
 
-Custom agents can also specify a `command`. Keep the configuration-directory spelling consistent with your terminal setup, including symlink paths. Agent/profile identity is bound to the conversation; model and effort can change between queued turns.
+For a custom agent, a blank executable uses the built-in agent's executable and a blank directory inherits the CLI environment. Use the same directory spelling as in the terminal, including symlink paths. Start a new session when changing a profile's account or session directory.
+
+With a Claude agent selected, send `/help`, `/status`, or `/login` in Paper Chat. The result appears in the chat panel. For sign-in, open the official Claude authorization page and paste the code back into the sign-in card. The CLI uses the selected profile on the workspace host. Claude commands and skills supported in print mode can also be sent from the composer.
 
 The revision prompt includes the current project path, the author's instruction, selected PDF text, source context, and available selection screenshots. It also requests the optional **SE-paper-revising** skill at `<agent-config>/skills/paper-review/SKILL.md`. The skill is user-installed; when unavailable, the prompt asks the agent to report that and continue with the request. The complete prompt template is in [src/agent.ts](src/agent.ts).
 

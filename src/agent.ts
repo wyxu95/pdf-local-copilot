@@ -3,8 +3,7 @@ import { launch, terminate } from './process';
 import type { Task } from './project';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { homedir } from 'node:os';
-import { claudeConfigDir, type AgentKind, type AgentProfile } from './agents';
+import { claudeConfigDir, codexConfigDir, type AgentKind, type AgentProfile } from './agents';
 import type { RunOptions } from './models';
 import { AgentOutput, contentText, type AgentUpdate } from './agent-output';
 
@@ -16,8 +15,10 @@ export interface Note {
   source?: { file: string; line: number; endLine?: number; text: string; anchor?: string };
 }
 export type Agent = string;
+export const isClaudeSlashCommand = (text: string) => /^\/[a-z][\w:-]*(?=\s|$)/i.test(text);
 export function agentEnvironment(agent: AgentKind, directory?: string, options: RunOptions = {}): NodeJS.ProcessEnv {
-  return agent === 'codex' ? {} : { ...(directory ? { CLAUDE_CONFIG_DIR: claudeConfigDir(directory) } : {}), ...(options.effort ? { CLAUDE_CODE_EFFORT_LEVEL: options.effort } : {}) };
+  if (agent === 'codex') return directory ? { CODEX_HOME: codexConfigDir(directory) } : {};
+  return { ...(directory ? { CLAUDE_CONFIG_DIR: claudeConfigDir(directory) } : {}), ...(options.effort ? { CLAUDE_CODE_EFFORT_LEVEL: options.effort } : {}) };
 }
 export function agentArguments(agent: AgentKind, session?: string, images: string[] = [], options: RunOptions = {}) {
   if (agent === 'codex') {
@@ -43,7 +44,7 @@ export function prompt(task: Task, notes: Note[], instruction: string, skillFile
 
 export function runAgent(agent: Agent, binary: string, task: Task, notes: Note[], instruction: string, log: (s: string) => void, images: string[] = [], assistant?: (update: AgentUpdate) => void, profile?: AgentProfile, options: RunOptions = {}) {
   const kind = profile?.type || (agent === 'codex' ? 'codex' : 'claude');
-  const directory = agent === 'claude' ? undefined : profile?.claude_config_dir;
+  const directory = kind === 'claude' ? profile?.claude_config_dir : profile?.codex_home;
   const child = launch(binary, agentArguments(kind, task.sessions?.[agent], images, options), task.proposal, agentEnvironment(kind, directory, options));
   let failed: string | undefined, cancelled = false;
   let persistence = Promise.resolve();
@@ -89,8 +90,9 @@ export function runAgent(agent: Agent, binary: string, task: Task, notes: Note[]
       else if (code !== 0 || failed) reject(new Error(failed || `${agent} exited with ${signal || code}. See the run output.`));
       else resolve();
     });
-    const config = kind === 'claude' ? claudeConfigDir(directory) : process.env.CODEX_HOME || path.join(homedir(), '.codex');
-    const content = prompt(task, notes, instruction, path.join(config, 'skills', 'paper-review', 'SKILL.md'));
+    const config = kind === 'claude' ? claudeConfigDir(directory) : codexConfigDir(directory);
+    const content = kind === 'claude' && isClaudeSlashCommand(instruction) ? instruction
+      : prompt(task, notes, instruction, path.join(config, 'skills', 'paper-review', 'SKILL.md'));
     if (kind === 'claude' && images.length) {
       void Promise.all(images.map(async image => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: (await fs.readFile(image)).toString('base64') } }))).then(blocks => {
         child.stdin.end(JSON.stringify({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'text', text: content }, ...blocks] } }) + '\n');

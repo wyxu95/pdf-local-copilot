@@ -101,6 +101,10 @@ body.chat-only #chat { width: 100%; border-left: 0; }
 #chat .queued-note-label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queued-turn span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chat-error { margin: 6px 10px; padding: 7px; font-size: 11px; line-height: 1.6; color: var(--vscode-errorForeground, #dc7770); background: #ad454518; border-radius: 3px; }
+.claude-command { margin: 6px 10px; padding: 9px; border: 1px solid var(--vscode-panel-border, #8884); border-radius: 4px; background: var(--vscode-editorWidget-background, #8881); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; max-height: 45%; overflow: auto; }
+.claude-command p { margin: 5px 0 8px; }
+.claude-command-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.claude-auth-code { flex: 1; min-width: 100px; padding: 4px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #8885); }
 .annotation-popover { position: absolute; z-index: 20; width: min(320px, calc(100% - 16px)); padding: 9px; border: 1px solid var(--vscode-focusBorder, #347dd0); border-radius: 7px; box-shadow: 0 4px 16px #0003; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); color: var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground)); }
 .annotation-popover .comment-input { min-height: 72px; border: none; padding: 4px; resize: vertical; background: transparent; }
 .annotation-popover .comment-body { padding: 4px; margin: 0; }

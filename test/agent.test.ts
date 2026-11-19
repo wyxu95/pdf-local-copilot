@@ -59,15 +59,21 @@ test('uclaude uses claude-uni and resumes its own session independently of defau
     const standard = JSON.parse(await fs.readFile(path.join(task.proposal, '.claude.json'), 'utf8'));
     assert.equal(standard.config, undefined);
     assert.ok(standard.input.includes(path.join(os.homedir(), '.claude/skills/paper-review/SKILL.md')));
-    const legacy = { ...configuredAgents()[1], claude_config_dir: path.join(os.homedir(), '.claude') };
-    await runAgent('claude', binary, task, [], 'Existing default conversation without an override', () => {}, [], undefined, legacy).done;
-    assert.equal(JSON.parse(await fs.readFile(path.join(task.proposal, '.claude.json'), 'utf8')).config, undefined);
     process.env.CLAUDE_CONFIG_DIR = path.join(temp, 'inherited-profile');
-    await runAgent('claude', binary, task, [], 'Existing default conversation', () => {}, [], undefined, legacy).done;
+    await runAgent('claude', binary, task, [], 'Existing default conversation', () => {}, [], undefined, configuredAgents()[1]).done;
     const resumed = JSON.parse(await fs.readFile(path.join(task.proposal, 'inherited-profile.json'), 'utf8'));
     assert.equal(resumed.config, process.env.CLAUDE_CONFIG_DIR);
     assert.ok(resumed.input.includes(path.join(process.env.CLAUDE_CONFIG_DIR, 'skills/paper-review/SKILL.md')));
     assert.ok(resumed.args.includes(primary));
+    const directory = path.join(temp, 'built-in-profile');
+    const builtIn = configuredAgents([], { codex: 'codex', claude: binary }, { claude_config_dir: directory })[1];
+    await runAgent('claude', builtIn.command, task, [], 'Configured built-in Claude', () => {}, [], undefined, builtIn).done;
+    const configured = JSON.parse(await fs.readFile(path.join(task.proposal, 'built-in-profile.json'), 'utf8'));
+    assert.equal(configured.config, directory);
+    assert.ok(configured.input.includes(path.join(directory, 'skills/paper-review/SKILL.md')));
+    await runAgent('claude', builtIn.command, task, [], '/paper-custom preserve this argument', () => {}, [], undefined, builtIn).done;
+    const slash = JSON.parse(await fs.readFile(path.join(task.proposal, 'built-in-profile.json'), 'utf8'));
+    assert.equal(slash.input, '/paper-custom preserve this argument');
   } finally {
     if (inherited === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = inherited;
     await fs.rm(temp, { recursive: true, force: true });

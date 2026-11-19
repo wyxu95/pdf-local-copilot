@@ -30,6 +30,25 @@ execFileSync('git', ['add', '.gitignore', 'main.tex', 'refs.bib', 'helper.js', '
 execFileSync('git', ['-c', 'user.name=PDF Copilot Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'Fixture baseline'], { cwd: paperRoot });
 await cp(path.join(root, 'test/fake-codex.cjs'), path.join(root, 'output/host/fake-codex'));
 await chmod(path.join(root, 'output/host/fake-codex'), 0o755);
+await writeFile(path.join(root, 'output/host/fake claude'), `#!/usr/bin/env node
+const fs = require('node:fs');
+const marker = ${JSON.stringify(path.join(root, 'output/host/claude-signed-in'))};
+const args = process.argv.slice(2);
+if (args.join(' ') === 'auth status --json') {
+  const loggedIn = fs.existsSync(marker);
+  console.log(JSON.stringify({ loggedIn, authMethod: loggedIn ? 'claude.ai' : 'none', configDirectory: process.env.CLAUDE_CONFIG_DIR }));
+  process.exitCode = loggedIn ? 0 : 1;
+} else if (args.join(' ') === 'auth login') {
+  fs.appendFileSync(marker + '.attempts', JSON.stringify({ cwd: process.cwd(), config: process.env.CLAUDE_CONFIG_DIR }) + '\\n');
+  console.log('Open https://claude.com/cai/oauth/authorize?state=fixture');
+  const reader = require('node:readline').createInterface({ input: process.stdin });
+  reader.once('line', code => {
+    if (code === 'fixture-authorization-code') fs.writeFileSync(marker, 'signed in');
+    else process.exitCode = 1;
+    reader.close();
+  });
+} else process.exitCode = 1;
+`, { mode: 0o755 });
 await build({ entryPoints: [path.join(root, 'test/host-suite.ts')], outfile: path.join(root, 'output/host/suite.cjs'), bundle: true, platform: 'node', external: ['vscode'], format: 'cjs' });
 const args = [path.join(root, 'output/host/paper'), '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes', '--remote-debugging-port=9339', '--user-data-dir=' + path.join(root, 'output/host/profile'), '--extensions-dir=' + path.join(root, 'output/host/extensions')];
 if (process.env.PDF_COPILOT_VSIX) {
